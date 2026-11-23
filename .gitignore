@@ -1,0 +1,9 @@
+# audio and derived transcripts stay local (large, and not ours to redistribute)
+sampler/library/
+sampler/exports/
+space-detective-samples/
+*.wav
+*.mp3
+.claude/
+__pycache__/
+.venv/

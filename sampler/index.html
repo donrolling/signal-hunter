@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sample Scrubber</title>
+<style>
+  :root { --bg:#14161b; --panel:#1d2027; --line:#2c313b; --text:#e6e3da; --dim:#8c93a0; --accent:#e8b04b; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 system-ui, sans-serif; height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; gap:10px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  h1 { font-size:16px; margin:0 8px 0 0; letter-spacing:.05em; color:var(--accent); }
+  input, select, button { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; }
+  #q { flex:1; min-width:220px; }
+  button { cursor:pointer; } button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); color:#000; }
+  #count { color:var(--dim); }
+  main { flex:1; display:grid; grid-template-columns:minmax(280px, 40%) 1fr; min-height:0; }
+  #results { overflow:auto; border-right:1px solid var(--line); }
+  .seg { padding:6px 16px; border-bottom:1px solid var(--line); cursor:pointer; display:grid; grid-template-columns:auto 1fr; gap:2px 10px; }
+  .seg:hover, .seg.sel { background:var(--panel); }
+  .seg .t { color:var(--accent); font-variant-numeric:tabular-nums; }
+  .seg .ep { grid-column:1/-1; color:var(--dim); font-size:11px; }
+  mark { background:var(--accent); color:#000; border-radius:2px; }
+  #editor { padding:16px; overflow:auto; }
+  #info { color:var(--dim); margin-bottom:8px; }
+  #wave { background:var(--panel); border-radius:6px; min-height:160px; }
+  .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
+  #name { flex:1; min-width:200px; }
+  #sel, #status { color:var(--dim); font-variant-numeric:tabular-nums; }
+  #exports { color:var(--dim); padding-left:18px; }
+  kbd { border:1px solid var(--line); border-radius:3px; padding:0 4px; font-size:11px; }
+  @media (max-width:720px) { main { grid-template-columns:1fr; grid-template-rows:40% 1fr; } #results { border-right:0; border-bottom:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SAMPLE SCRUBBER</h1>
+  <input id="q" placeholder="Search what they say… (useless, stars, dead)" autofocus>
+  <select id="epSel"><option value="">All episodes</option></select>
+  <span id="count"></span>
+</header>
+<main>
+  <section id="results"></section>
+  <section id="editor">
+    <div id="info">Click a line to load it. Drag on the waveform to select.</div>
+    <div id="wave"></div>
+    <div class="row">
+      <button id="playSel">▶ Selection <kbd>space</kbd></button>
+      <button id="playWin">▶ Window</button>
+      <button id="loop">⟲ Loop <kbd>L</kbd></button>
+      <button id="back">◀ 10s</button>
+      <button id="fwd">10s ▶</button>
+      <label>Zoom <input id="zoom" type="range" min="10" max="500" value="40"></label>
+    </div>
+    <div class="row"><span id="sel"></span></div>
+    <div class="row">
+      <input id="name" placeholder="clip name">
+      <button id="export">Export WAV <kbd>E</kbd></button>
+    </div>
+    <div class="row" id="status"></div>
+    <h3>Exports</h3>
+    <ul id="exports"></ul>
+  </section>
+</main>
+<script type="module">
+import WaveSurfer from 'https://cdn.jsdelivr.net/npm/wavesurfer.js@7.8.0/dist/wavesurfer.esm.js'
+import Regions from 'https://cdn.jsdelivr.net/npm/wavesurfer.js@7.8.0/dist/plugins/regions.esm.js'
+
+const $ = id => document.getElementById(id)
+const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(2).padStart(5, '0')}`
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const slug = s => s.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50)
+
+let segs = [], cur = null, region = null, loop = false
+const REGION_COLOR = 'rgba(232,176,75,.28)'
+
+const regions = Regions.create()
+const ws = WaveSurfer.create({
+  container: '#wave', height: 160, waveColor: '#6b7a8f', progressColor: '#e8b04b',
+  cursorColor: '#fff', minPxPerSec: 40, plugins: [regions],
+})
+regions.enableDragSelection({ color: REGION_COLOR })
+regions.on('region-created', r => { if (region && region !== r) region.remove(); region = r; showSel() })
+regions.on('region-updated', showSel)
+regions.on('region-out', r => { if (loop && r === region) r.play() })
+
+function showSel() {
+  if (!cur || !region) return ($('sel').textContent = '')
+  const a = cur.start + region.start, b = cur.start + region.end
+  $('sel').textContent = `Selection ${fmt(a)} → ${fmt(b)}  (${(b - a).toFixed(2)}s)`
+}
+
+async function load(ep, start, end, selA, selB) {
+  start = Math.max(0, start)
+  cur = { ep, start, end }
+  $('info').textContent = `${ep} · window ${fmt(start)}–${fmt(end)}`
+  await ws.load(`/api/clip?ep=${encodeURIComponent(ep)}&start=${start}&end=${end}`)
+  ws.zoom(+$('zoom').value)
+  regions.clearRegions(); region = null
+  if (selA != null) {
+    const a = Math.max(0, selA - start), b = Math.min(end - start, selB - start)
+    if (b > a) regions.addRegion({ start: a, end: b, color: REGION_COLOR })
+  }
+  showSel()
+}
+
+function render() {
+  const q = $('q').value.trim().toLowerCase(), ep = $('epSel').value
+  const hits = segs.filter(s => (!ep || s.ep === ep) && (!q || s.text.toLowerCase().includes(q)))
+  $('count').textContent = `${hits.length} lines`
+  const re = q && new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+  $('results').innerHTML = hits.slice(0, 600).map(s => {
+    const text = re ? esc(s.text).replace(re, m => `<mark>${m}</mark>`) : esc(s.text)
+    return `<div class="seg" data-i="${s.i}"><span class="t">${fmt(s.start)}</span><span>${text}</span>${ep ? '' : `<span class="ep">${esc(s.ep)}</span>`}</div>`
+  }).join('')
+}
+
+$('results').onclick = e => {
+  const row = e.target.closest('.seg'); if (!row) return
+  document.querySelectorAll('.seg.sel').forEach(r => r.classList.remove('sel')); row.classList.add('sel')
+  const s = segs[+row.dataset.i]
+  $('name').value = slug(s.text.split(' ').slice(0, 6).join(' '))
+  load(s.ep, s.start - 5, s.end + 15, s.start, s.end)
+}
+
+const shift = d => {
+  if (!cur) return
+  const keep = region && [cur.start + region.start, cur.start + region.end]
+  load(cur.ep, cur.start + d, cur.end + d, ...(keep || []))
+}
+$('back').onclick = () => shift(-10)
+$('fwd').onclick = () => shift(10)
+$('zoom').oninput = e => ws.getDuration() && ws.zoom(+e.target.value)
+$('playWin').onclick = () => ws.playPause()
+const playSel = () => ws.isPlaying() ? ws.pause() : region ? region.play() : ws.play()
+$('playSel').onclick = playSel
+const toggleLoop = () => { loop = !loop; $('loop').classList.toggle('on', loop) }
+$('loop').onclick = toggleLoop
+
+async function doExport() {
+  if (!cur || !region) return ($('status').textContent = 'Select a region first.')
+  const body = { ep: cur.ep, start: cur.start + region.start, end: cur.start + region.end, name: $('name').value || 'clip' }
+  const r = await fetch('/api/export', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json())
+  $('status').textContent = r.error ? `Error: ${r.error}` : `Saved ${r.path}`
+  refreshExports()
+}
+$('export').onclick = doExport
+
+async function refreshExports() {
+  const list = await fetch('/api/exports').then(r => r.json())
+  $('exports').innerHTML = list.map(f => `<li>${esc(f)}</li>`).join('') || '<li>none yet</li>'
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.matches('input')) return
+  if (e.code === 'Space') { e.preventDefault(); playSel() }
+  else if (e.key === 'l' || e.key === 'L') toggleLoop()
+  else if (e.key === 'e' || e.key === 'E') doExport()
+})
+$('name').addEventListener('keydown', e => { if (e.key === 'Enter') doExport() })
+$('q').oninput = render
+$('epSel').onchange = render
+
+const lib = await fetch('/api/library').then(r => r.json())
+lib.forEach(e => {
+  $('epSel').insertAdjacentHTML('beforeend', `<option>${esc(e.name)}</option>`)
+  e.segments.forEach(s => segs.push({ ...s, ep: e.name, i: segs.length }))
+})
+render(); refreshExports()
+</script>
+</body>
+</html>

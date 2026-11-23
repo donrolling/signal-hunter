@@ -6,7 +6,7 @@
 Library: library/<name>.<ext> + library/<name>.json (Whisper segments).
 Exports: exports/<name>.wav (24-bit, source sample rate) or exports/<name>.mp4 (video sources).
 """
-import argparse, json, re, shutil, subprocess, sys, urllib.parse, urllib.request
+import argparse, itertools, json, queue, re, shutil, subprocess, sys, threading, urllib.parse, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
@@ -14,6 +14,10 @@ ROOT = Path(__file__).parent
 LIB, EXP = ROOT / "library", ROOT / "exports"
 VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov"}
 MEDIA_EXT = {".mp3", ".wav", ".flac", ".ogg", ".m4a"} | VIDEO_EXT
+
+
+class Oops(Exception):
+    """A user-facing problem (bad source, too many files, ...)."""
 
 
 def slug(s):
@@ -28,14 +32,20 @@ def archive_files(ident, match):
     if match:
         files = [f for f in files if match.lower() in f.lower()]
     if len(files) > 5 and not match:
-        sys.exit(f"{len(files)} mp3s in {ident}; narrow it with --match. First few:\n  " + "\n  ".join(files[:15]))
+        raise Oops(f"{len(files)} mp3s in {ident}; add a word from the file names to narrow it "
+                   f"(e.g. '{ident} {Path(files[0]).stem[-12:]}'). First few: " + ", ".join(files[:8]))
+    if not files:
+        raise Oops(f"no matching mp3s in {ident}")
     return [f"https://archive.org/download/{ident}/{urllib.parse.quote(f)}" for f in files]
 
 
 def fetch(src, match):
-    if Path(src).exists():
+    if Path(src).is_file():
+        if Path(src).suffix.lower() not in MEDIA_EXT:
+            raise Oops(f"not an audio/video file: {src}")
         dst = LIB / (slug(Path(src).stem) + Path(src).suffix.lower())
-        shutil.copy(src, dst)
+        if not (dst.exists() and dst.samefile(src)):
+            shutil.copy(src, dst)
         return [dst]
     m = re.match(r"https?://archive\.org/(?:details|download)/([^/?#]+)/?(?:[?#].*)?$", src)
     if m:
@@ -65,20 +75,54 @@ def decode(path, start=None, dur=None, rate=16000):
     return ["ffmpeg", "-v", "error", *src_args(path, start, dur), "-ac", "1", "-ar", str(rate)]
 
 
-def transcribe(paths, device):
+_models = {}
+
+
+def transcribe(paths, device, say=print):
     import numpy as np
-    from faster_whisper import WhisperModel  # only needed for `add`
-    model = WhisperModel("small.en", device=device, compute_type="int8" if device == "cpu" else "int8_float16")
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        raise Oops("transcription needs faster-whisper: run  pip install faster-whisper  then restart the server")
+    if device not in _models:  # load once; it's slow
+        _models[device] = WhisperModel("small.en", device=device, compute_type="int8" if device == "cpu" else "int8_float16")
+    model = _models[device]
     for p in paths:
         j = p.with_suffix(".json")
         if j.exists():
             continue
-        print("transcribing", p.name, "(takes a while on CPU)", flush=True)
+        say(f"transcribing {p.name} (takes a while on CPU)")
         raw = subprocess.run(decode(p) + ["-f", "f32le", "-"], capture_output=True, check=True).stdout
         segs, _ = model.transcribe(np.frombuffer(raw, np.float32), vad_filter=True)
         out = [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segs]
         j.write_text(json.dumps(out, indent=1))
-        print(" ", len(out), "segments", flush=True)
+        say(f"{p.name}: {len(out)} lines")
+
+
+# ---------- background imports (from the page) ----------
+
+JOBS, _jobq, _ids = [], queue.Queue(), itertools.count(1)
+DEVICE = "cpu"
+
+
+def enqueue(label, get_paths):
+    job = {"id": next(_ids), "label": label, "state": "queued", "msg": "waiting"}
+    JOBS.append(job)
+    _jobq.put((job, get_paths))
+    return job
+
+
+def worker():  # one at a time: transcription already uses every core
+    while True:
+        job, get_paths = _jobq.get()
+        job["state"] = "working"
+        try:
+            job["msg"] = "downloading"
+            paths = get_paths()
+            transcribe(paths, DEVICE, say=lambda m: job.update(msg=m))
+            job.update(state="done", msg=", ".join(p.name for p in paths))
+        except Exception as e:
+            job.update(state="error", msg=str(e))
 
 
 # ---------- server ----------
@@ -128,12 +172,37 @@ class H(BaseHTTPRequestHandler):
             return
         if u.path == "/api/exports":
             return self.send(sorted(p.name for p in EXP.iterdir() if p.suffix in (".wav", ".mp4")))
+        if u.path == "/api/jobs":
+            return self.send(JOBS[-20:])
         self.send({"error": "not found"}, code=404)
 
     def do_POST(self):
-        if self.path != "/api/export":
-            return self.send({"error": "not found"}, code=404)
+        u = urllib.parse.urlparse(self.path)
+        if u.path == "/api/upload":  # dropped/browsed file: raw body, ?name=<original file name>
+            name = dict(urllib.parse.parse_qsl(u.query)).get("name", "")
+            ext = Path(name).suffix.lower()
+            if ext not in MEDIA_EXT:
+                return self.send({"error": f"not an audio/video file: {name}"}, code=400)
+            dst = LIB / (slug(Path(name).stem) + ext)
+            left = int(self.headers["Content-Length"])
+            with open(dst, "wb") as f:  # stream: videos can be big
+                while left:
+                    chunk = self.rfile.read(min(left, 1 << 20))
+                    if not chunk:
+                        break
+                    f.write(chunk); left -= len(chunk)
+            return self.send(enqueue(name, lambda: [dst]))
         d = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if u.path == "/api/add":  # pasted URL, archive.org id (+ optional filter word), or local path
+            src, match = d.get("src", "").strip().strip("\"'"), None  # "Copy as path" adds quotes
+            if not src:
+                return self.send({"error": "paste a URL or file path"}, code=400)
+            if not Path(src).is_file() and len(src.split(None, 1)) == 2:
+                src, match = src.split(None, 1)
+            label = src.rstrip("/").rsplit("/", 1)[-1].rsplit("\\", 1)[-1] + (f" ({match})" if match else "")
+            return self.send(enqueue(label, lambda: fetch(src, match)))
+        if u.path != "/api/export":
+            return self.send({"error": "not found"}, code=404)
         p = self.ep(d.get("ep", ""))
         if not p:
             return
@@ -169,12 +238,18 @@ def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
     a = sub.add_parser("add"); a.add_argument("src"); a.add_argument("--match"); a.add_argument("--device", default="cpu")
-    s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8765)
+    s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8765); s.add_argument("--device", default="cpu")
     args = ap.parse_args()
     LIB.mkdir(exist_ok=True); EXP.mkdir(exist_ok=True)
     if args.cmd == "add":
-        transcribe(fetch(args.src, args.match), args.device)
+        try:
+            transcribe(fetch(args.src, args.match), args.device)
+        except Oops as e:
+            sys.exit(str(e))
     else:
+        global DEVICE
+        DEVICE = args.device
+        threading.Thread(target=worker, daemon=True).start()
         print(f"http://localhost:{args.port}", flush=True)
         ThreadingHTTPServer(("127.0.0.1", args.port), H).serve_forever()
 

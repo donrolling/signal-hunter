@@ -13,15 +13,20 @@ pip install faster-whisper
 ## Usage
 
 ```powershell
-# add audio: archive.org URL or identifier, direct audio URL, or a local audio/video file
-python signal_hunter.py add https://archive.org/details/OTRR_X_Minus_One_Singles --match MarsIsHeaven
-python signal_hunter.py add C:\path\to\episode.mp3
-
-# open Signal Hunter at http://localhost:8765
-python signal_hunter.py serve
+python signal_hunter.py serve   # then open http://localhost:8765
 ```
 
-- Large archive.org items list their files and ask you to narrow them with `--match`.
+**Adding sources** (the server downloads, then transcribes in the background; the new source shows up in the episode picker when it's done):
+
+- **Drop** audio or video files anywhere on the page, or click **Browse…**
+- **Paste** into the "Add a source" box: a local file path (quotes from *Copy as path* are fine), a direct audio/video URL, or an archive.org link or identifier.
+
+From a terminal instead: `python signal_hunter.py add <url | archive.org id | file> [--match WORD]`.
+
+- Big archive.org collections ask you to narrow them: add a word from the file names after the link (`https://archive.org/details/OTRR_X_Minus_One_Singles MarsIsHeaven`).
+
+**Finding and exporting:**
+
 - The search box filters every transcript line; click a line to load ~20 s around it.
 - Drag on the waveform to select. `space` plays the selection, `L` loops it, `E` exports a WAV.
 - Video sources (mp4, mkv, webm, mov) show a synced preview; `M` exports a frame-accurate MP4 at full resolution.

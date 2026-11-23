@@ -39,16 +39,31 @@
   #name { flex:1; min-width:200px; }
   #sel, #status { color:var(--dim); font-variant-numeric:tabular-nums; }
   #exports { color:var(--dim); padding-left:18px; }
+  #addRow { flex-basis:100%; display:flex; gap:8px; align-items:center; }
+  #addSrc { flex:1; min-width:220px; }
+  #jobs { color:var(--dim); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:45%; }
+  #jobs .err { color:#e8766b; white-space:normal; }
+  #drop { position:fixed; inset:0; z-index:20; display:flex; align-items:center; justify-content:center; pointer-events:none;
+          background:rgba(20,22,27,.85); border:3px dashed var(--accent); color:var(--accent); font-size:22px; }
+  #drop[hidden] { display:none; }
   kbd { border:1px solid var(--line); border-radius:3px; padding:0 4px; font-size:11px; }
   @media (max-width:720px) { main { grid-template-columns:1fr; grid-template-rows:40% 1fr; } #results { border-right:0; border-bottom:1px solid var(--line); } }
 </style>
 </head>
 <body>
+<div id="drop" hidden>Drop audio or video to add it</div>
 <header>
   <h1>SIGNAL HUNTER</h1>
   <input id="q" placeholder="Search what they say… (useless, stars, dead)" autofocus>
   <div id="epPick"><button id="epBtn">All episodes ▾</button><div id="epList" hidden></div></div>
   <span id="count"></span>
+  <div id="addRow">
+    <input id="addSrc" placeholder="Add a source: paste a URL, archive.org link or file path — or drop files anywhere">
+    <button id="addBtn">Add</button>
+    <button id="browseBtn">Browse…</button>
+    <input id="fileIn" type="file" multiple accept="audio/*,video/*,.mkv" hidden>
+    <span id="jobs"></span>
+  </div>
 </header>
 <main>
   <section id="results"></section>
@@ -218,12 +233,63 @@ $('epList').onclick = e => {
 }
 document.addEventListener('click', () => { $('epList').hidden = true })
 
-const lib = await fetch('/api/library').then(r => r.json())
-lib.forEach(e => {
-  isVideo[e.name] = e.video
-  e.segments.forEach(s => segs.push({ ...s, ep: e.name, i: segs.length }))
+async function loadLibrary() {
+  const lib = await fetch('/api/library').then(r => r.json())
+  segs = []
+  for (const k in isVideo) delete isVideo[k]
+  lib.forEach(e => {
+    isVideo[e.name] = e.video
+    e.segments.forEach(s => segs.push({ ...s, ep: e.name, i: segs.length }))
+  })
+  render()
+}
+
+// ---- adding sources: paste box, Browse, drag and drop; the server downloads + transcribes in the background
+let polling = null, doneSeen = -1
+async function pollJobs() {
+  const jobs = await fetch('/api/jobs').then(r => r.json())
+  const active = jobs.filter(j => j.state === 'queued' || j.state === 'working')
+  const latest = jobs[jobs.length - 1]
+  $('jobs').innerHTML = active.length
+    ? esc(`${active[0].label}: ${active[0].msg}`) + (active.length > 1 ? ` (+${active.length - 1} queued)` : '')
+    : latest ? (latest.state === 'error' ? `<span class="err">${esc(latest.label)}: ${esc(latest.msg)}</span>`
+                                          : esc(`Added ${latest.msg}`)) : ''
+  const done = jobs.filter(j => j.state === 'done').length
+  if (doneSeen >= 0 && done > doneSeen) await loadLibrary()  // a source finished: refresh list + picker
+  doneSeen = done
+  if (!active.length) { clearInterval(polling); polling = null }
+}
+const startPolling = () => { if (!polling) polling = setInterval(pollJobs, 2000); pollJobs() }
+
+async function addSrc() {
+  const src = $('addSrc').value.trim(); if (!src) return
+  const r = await fetch('/api/add', { method: 'POST', body: JSON.stringify({ src }) }).then(r => r.json())
+  if (r.error) return ($('jobs').innerHTML = `<span class="err">${esc(r.error)}</span>`)
+  $('addSrc').value = ''
+  startPolling()
+}
+async function upload(files) {
+  for (const f of files) {
+    $('jobs').textContent = `Uploading ${f.name}…`
+    const r = await fetch(`/api/upload?name=${encodeURIComponent(f.name)}`, { method: 'POST', body: f }).then(r => r.json())
+    if (r.error) $('jobs').innerHTML = `<span class="err">${esc(r.error)}</span>`
+  }
+  startPolling()
+}
+$('addBtn').onclick = addSrc
+$('addSrc').addEventListener('keydown', e => { if (e.key === 'Enter') addSrc() })
+$('browseBtn').onclick = () => $('fileIn').click()
+$('fileIn').onchange = e => { upload([...e.target.files]); e.target.value = '' }
+let dragDepth = 0
+document.addEventListener('dragenter', e => { if (e.dataTransfer.types.includes('Files')) { dragDepth++; $('drop').hidden = false } })
+document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; $('drop').hidden = true } })
+document.addEventListener('dragover', e => e.preventDefault())
+document.addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; $('drop').hidden = true
+  if (e.dataTransfer.files.length) upload([...e.dataTransfer.files])
 })
-render(); refreshExports()
+
+await loadLibrary(); refreshExports(); startPolling()
 </script>
 </body>
 </html>

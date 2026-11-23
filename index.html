@@ -61,6 +61,7 @@
       <input id="name" placeholder="clip name">
       <button id="export">Export WAV <kbd>E</kbd></button>
       <button id="exportMp4" hidden>Export MP4 <kbd>M</kbd></button>
+      <button id="toLive" hidden>Send to Live <kbd>S</kbd></button>
     </div>
     <div class="row" id="status"></div>
     <h3>Exports</h3>
@@ -144,17 +145,28 @@ $('playSel').onclick = playSel
 const toggleLoop = () => { loop = !loop; $('loop').classList.toggle('on', loop) }
 $('loop').onclick = toggleLoop
 
-async function doExport(format = 'wav') {
+// Inside the Max for Live device's jweb, window.max exists and "Send to Live" drops the WAV
+// into Live's highlighted clip slot (the device does the Live API call).
+const inLive = new URLSearchParams(location.search).has('live')
+$('toLive').hidden = !inLive
+
+async function doExport(format = 'wav', toLive = false) {
   if (!cur || !region) return ($('status').textContent = 'Select a region first.')
   if (format === 'mp4' && !isVideo[cur.ep]) return
   $('status').textContent = `Exporting ${format.toUpperCase()}…`
   const body = { ep: cur.ep, start: cur.start + region.start, end: cur.start + region.end, name: $('name').value || 'clip', format }
   const r = await fetch('/api/export', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json())
-  $('status').textContent = r.error ? `Error: ${r.error}` : `Saved ${r.path}`
+  if (!r.error && toLive) {
+    if (!window.max?.outlet) return ($('status').textContent = `Saved ${r.path}, but Max isn't reachable: open this from the Live device`)
+    window.max.outlet('send', r.path)
+  }
+  $('status').textContent = r.error ? `Error: ${r.error}`
+    : toLive ? `Sent ${r.file} to Live's highlighted clip slot` : `Saved ${r.path}`
   refreshExports()
 }
 $('export').onclick = () => doExport('wav')
 $('exportMp4').onclick = () => doExport('mp4')
+$('toLive').onclick = () => doExport('wav', true)
 
 async function refreshExports() {
   const list = await fetch('/api/exports').then(r => r.json())
@@ -167,6 +179,7 @@ document.addEventListener('keydown', e => {
   else if (e.key === 'l' || e.key === 'L') toggleLoop()
   else if (e.key === 'e' || e.key === 'E') doExport('wav')
   else if (e.key === 'm' || e.key === 'M') doExport('mp4')
+  else if ((e.key === 's' || e.key === 'S') && inLive) doExport('wav', true)
 })
 $('name').addEventListener('keydown', e => { if (e.key === 'Enter') doExport(cur && isVideo[cur.ep] ? 'mp4' : 'wav') })
 $('q').oninput = render

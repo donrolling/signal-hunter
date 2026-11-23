@@ -39,7 +39,12 @@ def archive_files(ident, match):
     return [f"https://archive.org/download/{ident}/{urllib.parse.quote(f)}" for f in files]
 
 
-def fetch(src, match):
+def cli_say(msg, progress=None):
+    if progress is None:  # skip the per-block / per-segment progress ticks in the terminal
+        print(msg, flush=True)
+
+
+def fetch(src, match, say=cli_say):
     if Path(src).is_file():
         if Path(src).suffix.lower() not in MEDIA_EXT:
             raise Oops(f"not an audio/video file: {src}")
@@ -47,6 +52,8 @@ def fetch(src, match):
         if not (dst.exists() and dst.samefile(src)):
             shutil.copy(src, dst)
         return [dst]
+    if re.match(r"^([a-zA-Z]:[\\/]|\\\\|/|~)", src):  # looks like a local path, but isn't a file
+        raise Oops(f"file not found: {src}")
     m = re.match(r"https?://archive\.org/(?:details|download)/([^/?#]+)/?(?:[?#].*)?$", src)
     if m:
         urls = archive_files(m.group(1), match)
@@ -59,8 +66,11 @@ def fetch(src, match):
         name = urllib.parse.unquote(u.rsplit("/", 1)[-1])
         dst = LIB / (slug(Path(name).stem) + (Path(name).suffix.lower() or ".mp3"))
         if not dst.exists():
-            print("downloading", name, flush=True)
-            urllib.request.urlretrieve(u, dst)
+            say(f"downloading {name}")
+            part = dst.with_name(dst.name + ".part")  # a failed download never looks like a finished one
+            urllib.request.urlretrieve(u, part, reporthook=lambda b, bs, total:
+                                       say(f"downloading {name}", min(1.0, b * bs / total) if total > 0 else 0.0))
+            part.replace(dst)
         out.append(dst)
     return out
 
@@ -78,23 +88,29 @@ def decode(path, start=None, dur=None, rate=16000):
 _models = {}
 
 
-def transcribe(paths, device, say=print):
+def transcribe(paths, device, say=cli_say):
     import numpy as np
     try:
         from faster_whisper import WhisperModel
     except ImportError:
         raise Oops("transcription needs faster-whisper: run  pip install faster-whisper  then restart the server")
     if device not in _models:  # load once; it's slow
+        say("loading the speech model (the first run downloads ~500 MB)")
         _models[device] = WhisperModel("small.en", device=device, compute_type="int8" if device == "cpu" else "int8_float16")
     model = _models[device]
     for p in paths:
         j = p.with_suffix(".json")
         if j.exists():
             continue
-        say(f"transcribing {p.name} (takes a while on CPU)")
+        say(f"reading {p.name}")
         raw = subprocess.run(decode(p) + ["-f", "f32le", "-"], capture_output=True, check=True).stdout
+        dur = max(len(raw) / 4 / 16000, 1)
+        say(f"transcribing {p.name} (takes a while on CPU)")
         segs, _ = model.transcribe(np.frombuffer(raw, np.float32), vad_filter=True)
-        out = [{"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()} for s in segs]
+        out = []
+        for s in segs:  # lazy generator: report progress as it goes
+            out.append({"start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip()})
+            say(f"transcribing {p.name}", min(1.0, s.end / dur))
         j.write_text(json.dumps(out, indent=1))
         say(f"{p.name}: {len(out)} lines")
 
@@ -106,7 +122,7 @@ DEVICE = "cpu"
 
 
 def enqueue(label, get_paths):
-    job = {"id": next(_ids), "label": label, "state": "queued", "msg": "waiting"}
+    job = {"id": next(_ids), "label": label, "state": "queued", "msg": "waiting for the one ahead", "progress": None}
     JOBS.append(job)
     _jobq.put((job, get_paths))
     return job
@@ -116,13 +132,15 @@ def worker():  # one at a time: transcription already uses every core
     while True:
         job, get_paths = _jobq.get()
         job["state"] = "working"
+        say = lambda m, progress=None: job.update(msg=m, progress=progress)
+        say("starting")
         try:
-            job["msg"] = "downloading"
-            paths = get_paths()
-            transcribe(paths, DEVICE, say=lambda m: job.update(msg=m))
-            job.update(state="done", msg=", ".join(p.name for p in paths))
+            paths = get_paths(say)
+            transcribe(paths, DEVICE, say)
+            lines = sum(len(json.loads(p.with_suffix(".json").read_text())) for p in paths)
+            job.update(state="done", msg=f"added, {lines} lines", progress=1.0, episodes=[p.name for p in paths])
         except Exception as e:
-            job.update(state="error", msg=str(e))
+            job.update(state="error", msg=str(e), progress=None)
 
 
 # ---------- server ----------
@@ -191,7 +209,7 @@ class H(BaseHTTPRequestHandler):
                     if not chunk:
                         break
                     f.write(chunk); left -= len(chunk)
-            return self.send(enqueue(name, lambda: [dst]))
+            return self.send(enqueue(name, lambda say: [dst]))
         d = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         if u.path == "/api/add":  # pasted URL, archive.org id (+ optional filter word), or local path
             src, match = d.get("src", "").strip().strip("\"'"), None  # "Copy as path" adds quotes
@@ -200,7 +218,7 @@ class H(BaseHTTPRequestHandler):
             if not Path(src).is_file() and len(src.split(None, 1)) == 2:
                 src, match = src.split(None, 1)
             label = src.rstrip("/").rsplit("/", 1)[-1].rsplit("\\", 1)[-1] + (f" ({match})" if match else "")
-            return self.send(enqueue(label, lambda: fetch(src, match)))
+            return self.send(enqueue(label, lambda say: fetch(src, match, say)))
         if u.path != "/api/export":
             return self.send({"error": "not found"}, code=404)
         p = self.ep(d.get("ep", ""))

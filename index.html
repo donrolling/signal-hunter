@@ -89,7 +89,15 @@ const ws = WaveSurfer.create({
 regions.enableDragSelection({ color: REGION_COLOR })
 regions.on('region-created', r => { if (region && region !== r) region.remove(); region = r; showSel() })
 regions.on('region-updated', showSel)
-regions.on('region-out', r => { if (loop && r === region) r.play() })
+// Selection playback stops (or loops) at the region end ourselves: region.play() doesn't
+// reliably stop when the media is a <video>/jweb element.
+let selEnd = null
+ws.on('timeupdate', t => {
+  if (selEnd == null || t < selEnd) return
+  if (loop && region) ws.setTime(region.start)
+  else { ws.pause(); selEnd = null }
+})
+ws.on('interaction', () => { selEnd = null })
 
 function showSel() {
   if (!cur || !region) return ($('sel').textContent = '')
@@ -139,8 +147,12 @@ const shift = d => {
 $('back').onclick = () => shift(-10)
 $('fwd').onclick = () => shift(10)
 $('zoom').oninput = e => ws.getDuration() && ws.zoom(+e.target.value)
-$('playWin').onclick = () => ws.playPause()
-const playSel = () => ws.isPlaying() ? ws.pause() : region ? region.play() : ws.play()
+$('playWin').onclick = () => { selEnd = null; ws.playPause() }
+const playSel = () => {
+  if (ws.isPlaying()) return ws.pause()
+  if (region) { selEnd = region.end; ws.setTime(region.start) }
+  ws.play()
+}
 $('playSel').onclick = playSel
 const toggleLoop = () => { loop = !loop; $('loop').classList.toggle('on', loop) }
 $('loop').onclick = toggleLoop

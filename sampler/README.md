@@ -1,4 +1,4 @@
-# Sample Scrubber
+# Signal Hunter
 
 Find vocal samples in old radio shows by searching what's said, then scrub and export WAVs for Ableton.
 

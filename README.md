@@ -14,22 +14,22 @@ pip install faster-whisper
 
 ```powershell
 # add audio: archive.org URL or identifier, direct audio URL, or a local audio/video file
-python sampler/sampler.py add https://archive.org/details/OTRR_X_Minus_One_Singles --match MarsIsHeaven
-python sampler/sampler.py add C:\path\to\episode.mp3
+python signal_hunter.py add https://archive.org/details/OTRR_X_Minus_One_Singles --match MarsIsHeaven
+python signal_hunter.py add C:\path\to\episode.mp3
 
-# open the scrubber at http://localhost:8765
-python sampler/sampler.py serve
+# open Signal Hunter at http://localhost:8765
+python signal_hunter.py serve
 ```
 
 - Large archive.org items list their files and ask you to narrow them with `--match`.
 - The search box filters every transcript line; click a line to load ~20 s around it.
 - Drag on the waveform to select. `space` plays the selection, `L` loops it, `E` exports.
 - `◀ 10s` / `10s ▶` slide the window; zoom in for precise edges.
-- Exports land in `sampler/exports/` as 24-bit WAV at the source sample rate.
+- Exports land in `exports/` as 24-bit WAV at the source sample rate.
 
 ## Notes
 
 - Search works on speech; music-only audio has nothing to search.
-- Uses Whisper's English `small.en` model; swap to `small` in `sampler.py` for other languages.
+- Uses Whisper's English `small.en` model; swap to `small` in `signal_hunter.py` for other languages.
 - Transcribes on CPU by default. `--device cuda` needs NVIDIA's cuBLAS/cuDNN 12 DLLs.
-- Your audio, transcripts and exports stay local (`sampler/library/` and `sampler/exports/` are git-ignored).
+- Your audio, transcripts and exports stay local (`library/` and `exports/` are git-ignored).

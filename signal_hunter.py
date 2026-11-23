@@ -1,7 +1,7 @@
-"""Old-radio sample finder.
+"""Signal Hunter: find vocal samples by what is said.
 
-  python sampler.py add <archive.org url|id|audio url|local file> [--match TEXT] [--device cuda]
-  python sampler.py serve [--port 8765]
+  python signal_hunter.py add <archive.org url|id|audio url|local file> [--match TEXT] [--device cuda]
+  python signal_hunter.py serve [--port 8765]
 
 Library: library/<name>.<ext> + library/<name>.json (Whisper segments).
 Exports: exports/<name>.wav (24-bit, source sample rate).

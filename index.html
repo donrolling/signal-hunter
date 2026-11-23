@@ -170,7 +170,9 @@ async function doExport(format = 'wav', toLive = false) {
   const r = await fetch('/api/export', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json())
   if (!r.error && toLive) {
     if (!window.max?.outlet) return ($('status').textContent = `Saved ${r.path}, but Max isn't reachable: open this from the Live device`)
-    window.max.outlet('send', r.path)
+    // two messages, in order: point the device at the highlighted slot, then create the clip there
+    window.max.outlet('locate')
+    window.max.outlet('clip', r.path.replaceAll('\\', '/'))
   }
   $('status').textContent = r.error ? `Error: ${r.error}`
     : toLive ? `Sent ${r.file} to Live's highlighted clip slot` : `Saved ${r.path}`

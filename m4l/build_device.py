@@ -2,7 +2,7 @@
 
 The device passes audio through untouched. Its "open" button pops up a window with the
 Signal Hunter page (jweb -> http://localhost:8765/?live=1). The page's "Send to Live"
-exports a WAV and sends its path out of jweb; the patch then calls
+exports a WAV and sends "locate" then "clip <path>" out of jweb; the patch then calls
 ClipSlot.create_audio_clip(path) on Live's highlighted clip slot (Live 12+).
 
 Run: python m4l/build_device.py   (rewrites m4l/Signal Hunter.amxd)
@@ -61,9 +61,8 @@ boxes = [
     box("reload", "message", [420, 100, 50, 22], 2, 1, "reload", pres=[8, 150, 50, 16]),
     box("win", "newobj", [300, 140, 110, 22], 2, 1, "p signal_hunter_window", patcher=window),
 
-    # "send <path>" from the page -> create_audio_clip on the highlighted clip slot
-    box("route", "newobj", [300, 180, 80, 22], 2, 2, "route send"),
-    box("trig", "newobj", [300, 220, 50, 22], 1, 2, "t a b"),
+    # page sends "locate" then "clip <path>": find the highlighted clip slot, then create_audio_clip there
+    box("route", "newobj", [300, 180, 110, 22], 3, 3, "route locate clip"),
     box("goto", "message", [420, 260, 230, 22], 2, 1, "goto live_set view highlighted_clip_slot"),
     box("path", "newobj", [420, 300, 70, 22], 1, 3, "live.path"),
     box("prepend", "newobj", [300, 300, 170, 22], 1, 1, "prepend call create_audio_clip"),
@@ -74,10 +73,10 @@ boxes = [
 lines = [
     line("plugin", 0, "plugout", 0), line("plugin", 1, "plugout", 1),
     line("open", 0, "pcontrol", 0), line("pcontrol", 0, "win", 0), line("reload", 0, "win", 1),
-    line("win", 0, "route", 0), line("route", 0, "trig", 0),
-    line("trig", 1, "goto", 0), line("goto", 0, "path", 0), line("path", 0, "obj", 1),  # right-to-left: id first
-    line("trig", 0, "prepend", 0), line("prepend", 0, "obj", 0),
-    line("trig", 0, "strip", 0), line("strip", 0, "setstat", 0), line("setstat", 0, "status", 0),
+    line("win", 0, "route", 0),
+    line("route", 0, "goto", 0), line("goto", 0, "path", 0), line("path", 0, "obj", 1),
+    line("route", 1, "prepend", 0), line("prepend", 0, "obj", 0),
+    line("route", 1, "strip", 0), line("strip", 0, "setstat", 0), line("setstat", 0, "status", 0),
 ]
 device = {"patcher": patcher([100, 100, 760, 520], boxes, lines, openinpresentation=1,
                              devicewidth=320.0, description="Search old radio and video by what's said; send clips to Live.")}

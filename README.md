@@ -1,6 +1,6 @@
 # Signal Hunter
 
-Find vocal samples by what's said. Pull audio or video from archive.org, URLs or local files, transcribe it with Whisper, then search, scrub and export WAVs for your DAW.
+Find samples and clips by what's said. Pull audio or video from archive.org, URLs or local files, transcribe it with Whisper, then search, scrub and export WAVs for your DAW.
 
 ## Setup
 
@@ -23,9 +23,10 @@ python signal_hunter.py serve
 
 - Large archive.org items list their files and ask you to narrow them with `--match`.
 - The search box filters every transcript line; click a line to load ~20 s around it.
-- Drag on the waveform to select. `space` plays the selection, `L` loops it, `E` exports.
+- Drag on the waveform to select. `space` plays the selection, `L` loops it, `E` exports a WAV.
+- Video sources (mp4, mkv, webm, mov) show a synced preview; `M` exports a frame-accurate MP4 at full resolution.
 - `◀ 10s` / `10s ▶` slide the window; zoom in for precise edges.
-- Exports land in `exports/` as 24-bit WAV at the source sample rate.
+- Exports land in `exports/`: 24-bit WAV at the source sample rate, or H.264/AAC MP4.
 
 ## Notes
 

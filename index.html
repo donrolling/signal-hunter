@@ -25,6 +25,8 @@
   #editor { padding:16px; overflow:auto; }
   #info { color:var(--dim); margin-bottom:8px; }
   #wave { background:var(--panel); border-radius:6px; min-height:160px; }
+  #video { display:block; width:100%; max-height:360px; background:#000; border-radius:6px; margin-bottom:8px; }
+  #video[hidden], button[hidden] { display:none; }
   .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
   #name { flex:1; min-width:200px; }
   #sel, #status { color:var(--dim); font-variant-numeric:tabular-nums; }
@@ -44,6 +46,7 @@
   <section id="results"></section>
   <section id="editor">
     <div id="info">Click a line to load it. Drag on the waveform to select.</div>
+    <video id="video" playsinline hidden></video>
     <div id="wave"></div>
     <div class="row">
       <button id="playSel">▶ Selection <kbd>space</kbd></button>
@@ -57,6 +60,7 @@
     <div class="row">
       <input id="name" placeholder="clip name">
       <button id="export">Export WAV <kbd>E</kbd></button>
+      <button id="exportMp4" hidden>Export MP4 <kbd>M</kbd></button>
     </div>
     <div class="row" id="status"></div>
     <h3>Exports</h3>
@@ -73,11 +77,12 @@ const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&
 const slug = s => s.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50)
 
 let segs = [], cur = null, region = null, loop = false
+const isVideo = {}
 const REGION_COLOR = 'rgba(232,176,75,.28)'
 
 const regions = Regions.create()
 const ws = WaveSurfer.create({
-  container: '#wave', height: 160, waveColor: '#6b7a8f', progressColor: '#e8b04b',
+  container: '#wave', media: $('video'), height: 160, waveColor: '#6b7a8f', progressColor: '#e8b04b',
   cursorColor: '#fff', minPxPerSec: 40, plugins: [regions],
 })
 regions.enableDragSelection({ color: REGION_COLOR })
@@ -94,6 +99,7 @@ function showSel() {
 async function load(ep, start, end, selA, selB) {
   start = Math.max(0, start)
   cur = { ep, start, end }
+  $('video').hidden = $('exportMp4').hidden = !isVideo[ep]
   $('info').textContent = `${ep} · window ${fmt(start)}–${fmt(end)}`
   await ws.load(`/api/clip?ep=${encodeURIComponent(ep)}&start=${start}&end=${end}`)
   ws.zoom(+$('zoom').value)
@@ -138,14 +144,17 @@ $('playSel').onclick = playSel
 const toggleLoop = () => { loop = !loop; $('loop').classList.toggle('on', loop) }
 $('loop').onclick = toggleLoop
 
-async function doExport() {
+async function doExport(format = 'wav') {
   if (!cur || !region) return ($('status').textContent = 'Select a region first.')
-  const body = { ep: cur.ep, start: cur.start + region.start, end: cur.start + region.end, name: $('name').value || 'clip' }
+  if (format === 'mp4' && !isVideo[cur.ep]) return
+  $('status').textContent = `Exporting ${format.toUpperCase()}…`
+  const body = { ep: cur.ep, start: cur.start + region.start, end: cur.start + region.end, name: $('name').value || 'clip', format }
   const r = await fetch('/api/export', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json())
   $('status').textContent = r.error ? `Error: ${r.error}` : `Saved ${r.path}`
   refreshExports()
 }
-$('export').onclick = doExport
+$('export').onclick = () => doExport('wav')
+$('exportMp4').onclick = () => doExport('mp4')
 
 async function refreshExports() {
   const list = await fetch('/api/exports').then(r => r.json())
@@ -156,14 +165,16 @@ document.addEventListener('keydown', e => {
   if (e.target.matches('input')) return
   if (e.code === 'Space') { e.preventDefault(); playSel() }
   else if (e.key === 'l' || e.key === 'L') toggleLoop()
-  else if (e.key === 'e' || e.key === 'E') doExport()
+  else if (e.key === 'e' || e.key === 'E') doExport('wav')
+  else if (e.key === 'm' || e.key === 'M') doExport('mp4')
 })
-$('name').addEventListener('keydown', e => { if (e.key === 'Enter') doExport() })
+$('name').addEventListener('keydown', e => { if (e.key === 'Enter') doExport(cur && isVideo[cur.ep] ? 'mp4' : 'wav') })
 $('q').oninput = render
 $('epSel').onchange = render
 
 const lib = await fetch('/api/library').then(r => r.json())
 lib.forEach(e => {
+  isVideo[e.name] = e.video
   $('epSel').insertAdjacentHTML('beforeend', `<option>${esc(e.name)}</option>`)
   e.segments.forEach(s => segs.push({ ...s, ep: e.name, i: segs.length }))
 })

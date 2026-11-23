@@ -1,10 +1,10 @@
-"""Signal Hunter: find vocal samples by what is said.
+"""Signal Hunter: find samples and clips by what is said.
 
-  python signal_hunter.py add <archive.org url|id|audio url|local file> [--match TEXT] [--device cuda]
+  python signal_hunter.py add <archive.org url|id|media url|local file> [--match TEXT] [--device cuda]
   python signal_hunter.py serve [--port 8765]
 
 Library: library/<name>.<ext> + library/<name>.json (Whisper segments).
-Exports: exports/<name>.wav (24-bit, source sample rate).
+Exports: exports/<name>.wav (24-bit, source sample rate) or exports/<name>.mp4 (video sources).
 """
 import argparse, json, re, shutil, subprocess, sys, urllib.parse, urllib.request
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -12,7 +12,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 LIB, EXP = ROOT / "library", ROOT / "exports"
-AUDIO_EXT = {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".mp4", ".mkv", ".webm"}
+VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov"}
+MEDIA_EXT = {".mp3", ".wav", ".flac", ".ogg", ".m4a"} | VIDEO_EXT
 
 
 def slug(s):
@@ -83,7 +84,7 @@ def transcribe(paths, device):
 # ---------- server ----------
 
 def episodes():
-    return sorted(p for p in LIB.iterdir() if p.suffix.lower() in AUDIO_EXT and p.with_suffix(".json").exists())
+    return sorted(p for p in LIB.iterdir() if p.suffix.lower() in MEDIA_EXT and p.with_suffix(".json").exists())
 
 
 class H(BaseHTTPRequestHandler):
@@ -108,17 +109,25 @@ class H(BaseHTTPRequestHandler):
         if u.path == "/":
             return self.send((ROOT / "index.html").read_bytes(), "text/html; charset=utf-8")
         if u.path == "/api/library":
-            return self.send([{"name": e.name, "segments": json.loads(e.with_suffix(".json").read_text())} for e in episodes()])
-        if u.path == "/api/clip":  # small window of audio for the waveform
+            return self.send([{"name": e.name, "video": e.suffix.lower() in VIDEO_EXT,
+                               "segments": json.loads(e.with_suffix(".json").read_text())} for e in episodes()])
+        if u.path == "/api/clip":  # small preview window: wav for audio, low-res mp4 for video
             p = self.ep(q.get("ep", ""))
             if p:
                 start, end = max(0.0, float(q["start"])), float(q["end"])
-                wav = subprocess.run(decode(p, start, min(end - start, 120), 44100) + ["-f", "wav", "-"],
-                                     capture_output=True, check=True).stdout
-                self.send(wav, "audio/wav")
+                dur = min(end - start, 120)
+                if p.suffix.lower() in VIDEO_EXT:
+                    cmd = ["ffmpeg", "-v", "error", *src_args(p, start, dur), "-vf", "scale=-2:360",
+                           "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p",
+                           "-c:a", "aac", "-ac", "2", "-ar", "44100", "-b:a", "160k",
+                           "-movflags", "frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "-"]
+                    ctype = "video/mp4"
+                else:
+                    cmd, ctype = decode(p, start, dur, 44100) + ["-f", "wav", "-"], "audio/wav"
+                self.send(subprocess.run(cmd, capture_output=True, check=True).stdout, ctype)
             return
         if u.path == "/api/exports":
-            return self.send(sorted(p.name for p in EXP.glob("*.wav")))
+            return self.send(sorted(p.name for p in EXP.iterdir() if p.suffix in (".wav", ".mp4")))
         self.send({"error": "not found"}, code=404)
 
     def do_POST(self):
@@ -131,14 +140,19 @@ class H(BaseHTTPRequestHandler):
         start, end = float(d["start"]), float(d["end"])
         if not 0 <= start < end or end - start > 300:
             return self.send({"error": "bad range"}, code=400)
-        dst = EXP / f"{slug(d.get('name', ''))}.wav"
-        n = 2
+        video = d.get("format") == "mp4" and p.suffix.lower() in VIDEO_EXT
+        ext, name = (".mp4" if video else ".wav"), slug(d.get("name", ""))
+        dst, n = EXP / f"{name}{ext}", 2
         while dst.exists():
-            dst = EXP / f"{slug(d.get('name', ''))}_{n}.wav"; n += 1
+            dst = EXP / f"{name}_{n}{ext}"; n += 1
         fade = min(0.01, (end - start) / 4)
-        subprocess.run(["ffmpeg", "-v", "error", *src_args(p, start, end - start),
-                        "-af", f"afade=t=in:d={fade},afade=t=out:st={end - start - fade:.3f}:d={fade}",
-                        "-c:a", "pcm_s24le", str(dst)], check=True)
+        afade = ["-af", f"afade=t=in:d={fade},afade=t=out:st={end - start - fade:.3f}:d={fade}"]
+        # video re-encodes so the cut is frame-accurate (a stream copy would snap to keyframes)
+        codec = (["-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
+                  "-c:a", "aac", "-b:a", "256k", "-movflags", "+faststart"] if video
+                 else ["-vn", "-c:a", "pcm_s24le"])
+        subprocess.run(["ffmpeg", "-v", "error", *src_args(p, start, end - start), *afade, *codec, str(dst)],
+                       capture_output=True, check=True)
         self.send({"file": dst.name, "path": str(dst.resolve())})
 
     def handle_one_request(self):

@@ -13,7 +13,7 @@ Needs Live 12 Suite, or Live 12 with Max for Live. Nothing else to install: the 
 3. Click **Open Signal Hunter**.
 4. Click an empty clip slot on an audio track, select a region, then **Send to Live** (`S`). The WAV lands in that slot.
 
-The first import downloads the speech model (~250 MB) once.
+The first time you add something, Signal Hunter asks where to keep your files (`Documents/Signal Hunter` is suggested). The first import also downloads the speech model (~250 MB) once.
 
 ## Adding sources
 
@@ -31,14 +31,16 @@ The server downloads and transcribes in the background; each import shows its pr
 - `◀ 10s` / `10s ▶` slide the window; zoom in for precise edges.
 - Exports are 24-bit WAV at the source sample rate, or H.264 MP4 with or without sound. **Open folder** next to Exports shows them.
 - Sources with no speech (music, silent film) list 30-second rows to browse instead.
+- In the source picker, hover a source for 🏷 (tags, comma separated, e.g. a project name) and 🗑 (delete it and its transcript; exports stay). Pick a tag to search only its sources.
 
 ## Settings
 
-The ⚙ button: export folder (type a path or **Choose…**), which free sources to show, and interface size (also Ctrl/⌘ + and −). In Live, drag the Signal Hunter window bigger and the page fills it.
+The ⚙ button: the Signal Hunter folder, the export folder (inside it by default; point it anywhere, e.g. a video project), which free sources to show, and interface size (also Ctrl/⌘ + and −). In Live, drag the Signal Hunter window bigger and the page fills it.
 
 ## Where things live
 
-- Your sources, transcripts, exports and `settings.json`: `Documents/Signal Hunter` (set `SIGNAL_HUNTER_DATA` to move it).
+- The Signal Hunter folder you picked holds `library/` (sources and their transcripts), `tags.json` and, unless you chose another export folder, `exports/`.
+- Settings: `%APPDATA%\Signal Hunter\settings.json` on Windows, `~/Library/Application Support/Signal Hunter` on a Mac.
 - The speech model: `%LOCALAPPDATA%\Signal Hunter` on Windows, `~/Library/Caches/Signal Hunter` on a Mac.
 - Search works on speech; music-only audio has nothing to search. Uses Whisper `small.en` (English).
 

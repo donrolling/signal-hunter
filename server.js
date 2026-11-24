@@ -2,7 +2,7 @@
 //
 // Runs inside the Live device (Max's node.script starts it) or on its own:  node server.js [--port 8765]
 // Library: <data>/library/<name>.<ext> + <name>.json (Whisper segments). Exports: <data>/exports/.
-// <data> is ~/Documents/Signal Hunter unless SIGNAL_HUNTER_DATA says otherwise.
+// <data> is the folder the user picks on first use (SIGNAL_HUNTER_DATA overrides it); settings live in the OS config folder.
 const http = require('http'), fs = require('fs'), os = require('os'), path = require('path')
 const { spawn, spawnSync } = require('child_process')
 
@@ -18,8 +18,11 @@ const FFMPEG = fs.existsSync(BUNDLED) ? BUNDLED : (() => { try { return require(
 let Max = null
 try { Max = require('max-api') } catch {}  // only there inside node.script
 
-const DATA = process.env.SIGNAL_HUNTER_DATA || path.join(os.homedir(), 'Documents', 'Signal Hunter')
-const LIB = path.join(DATA, 'library'), SETTINGS = path.join(DATA, 'settings.json')
+// settings sit outside the data folder, so they can say where the data folder is
+const CONFIG = path.join(process.env.APPDATA || path.join(os.homedir(), process.platform === 'darwin' ? 'Library/Application Support' : '.config'), 'Signal Hunter')
+const SETTINGS = path.join(CONFIG, 'settings.json')
+const SUGGESTED = path.join(os.homedir(), 'Documents', 'Signal Hunter')
+let DATA = null, LIB = null  // set once the user has picked a folder (see useData)
 // the ~250 MB speech model goes in a cache folder, not Documents (which is often synced to the cloud)
 const MODELS = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === 'darwin' ? 'Library/Caches' : '.cache'),
   'Signal Hunter', 'models')
@@ -149,36 +152,66 @@ const PROVIDERS = {
 }
 PROVIDERS.archive.page = id => `https://archive.org/details/${encodeURIComponent(id)}`
 
-// ---------- settings (Documents/Signal Hunter/settings.json) ----------
+// ---------- settings (<OS config folder>/Signal Hunter/settings.json) ----------
 
-const DEFAULTS = { exportDir: path.join(DATA, 'exports'), sources: { archive: true, commons: true, nasa: true }, uiScale: 1 }
+// dataDir: where sources, transcripts and tags live (null until the user picks it); exportDir: null = <dataDir>/exports
+const DEFAULTS = { dataDir: null, exportDir: null, sources: { archive: true, commons: true, nasa: true }, uiScale: 1 }
 function settings() {
   let saved = {}
-  try { saved = json(SETTINGS) } catch {}
+  try { saved = json(SETTINGS) } catch {
+    // earlier versions kept settings.json in Documents/Signal Hunter: adopt that folder as the data folder
+    try { saved = { ...json(path.join(SUGGESTED, 'settings.json')), dataDir: SUGGESTED } } catch {}
+    if (!saved.dataDir && fs.existsSync(path.join(SUGGESTED, 'library'))) saved = { dataDir: SUGGESTED }
+  }
+  if (process.env.SIGNAL_HUNTER_DATA) saved.dataDir = process.env.SIGNAL_HUNTER_DATA
+  // an export folder that is just <data>/exports is the default: store it as null so it follows a moved data folder
+  if (saved.dataDir && saved.exportDir && path.resolve(saved.exportDir) === path.resolve(saved.dataDir, 'exports')) saved.exportDir = null
   return { ...DEFAULTS, ...saved, sources: { ...DEFAULTS.sources, ...saved.sources } }
+}
+const fullPath = (dir, what) => {
+  if (!path.isAbsolute(dir)) throw new Oops(`${what} must be a full path, like C:\\Clips or /Users/you/Clips`)
+  fs.mkdirSync(dir, { recursive: true })
+  return dir
 }
 function saveSettings(patch) {
   const next = { ...settings(), ...patch }
   if (patch.sources) next.sources = { ...settings().sources, ...patch.sources }
-  if (patch.exportDir != null) {
-    if (!path.isAbsolute(patch.exportDir)) throw new Oops('export folder must be a full path, like C:\\Clips or /Users/you/Clips')
-    fs.mkdirSync(patch.exportDir, { recursive: true })
-  }
+  if (patch.exportDir) fullPath(patch.exportDir, 'the export folder')
+  if (patch.dataDir) useData(fullPath(patch.dataDir, 'the Signal Hunter folder'))
+  fs.mkdirSync(CONFIG, { recursive: true })
   fs.writeFileSync(SETTINGS, JSON.stringify(next, null, 1))
   return next
 }
-const EXP = () => { const d = settings().exportDir; fs.mkdirSync(d, { recursive: true }); return d }
+function useData(dir) {
+  DATA = dir; LIB = dir && path.join(dir, 'library')
+  if (LIB) fs.mkdirSync(LIB, { recursive: true })
+}
+const EXP = () => {
+  const d = settings().exportDir || (DATA && path.join(DATA, 'exports'))
+  if (d) fs.mkdirSync(d, { recursive: true })
+  return d
+}
 
-function chooseFolder() {  // the OS's own folder picker; resolves '' if cancelled
+// tags group sources (by project or anything else): <data>/tags.json, {"source.mp3": ["Space Detective"]}
+const TAGS = () => path.join(DATA, 'tags.json')
+const readTags = () => { try { return json(TAGS()) } catch { return {} } }
+function setTags(name, list) {
+  const all = readTags(), clean = [...new Set((list || []).map(t => String(t).trim()).filter(Boolean))]
+  if (clean.length) all[name] = clean; else delete all[name]
+  fs.writeFileSync(TAGS(), JSON.stringify(all, null, 1))
+  return clean
+}
+
+function chooseFolder(start, title) {  // the OS's own folder picker; resolves '' if cancelled
   const run = (cmd, args) => new Promise(ok => {
     const c = spawn(cmd, args), out = []
     c.stdout.on('data', d => out.push(d)); c.on('close', () => ok(Buffer.concat(out).toString().trim())); c.on('error', () => ok(''))
   })
   if (process.platform === 'win32')  // the modern Explorer-style picker (pastable address bar), see pick_folder.ps1
     return run('powershell', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'pick_folder.ps1'),
-      '-Start', settings().exportDir])
+      '-Start', start || '', '-Title', title])
   if (process.platform === 'darwin')
-    return run('osascript', ['-e', 'POSIX path of (choose folder with prompt "Export clips to")'])
+    return run('osascript', ['-e', `POSIX path of (choose folder with prompt ${JSON.stringify(title)})`])
   return run('zenity', ['--file-selection', '--directory'])
 }
 const openFolder = d => spawn(process.platform === 'win32' ? 'explorer' : process.platform === 'darwin' ? 'open' : 'xdg-open', [d], { detached: true, stdio: 'ignore' }).unref()
@@ -296,7 +329,7 @@ async function duration(p) {
   return durations.get(key)
 }
 
-const sources = () => fs.readdirSync(LIB).filter(f => MEDIA_EXT.has(ext(f)) && fs.existsSync(jsonOf(path.join(LIB, f)))).sort()
+const sources = () => !LIB ? [] : fs.readdirSync(LIB).filter(f => MEDIA_EXT.has(ext(f)) && fs.existsSync(jsonOf(path.join(LIB, f)))).sort()
 const source = name => sources().includes(name) ? path.join(LIB, name) : null  // whitelist: no path traversal
 
 function send(res, body, type = 'application/json', code = 200) {
@@ -311,9 +344,11 @@ async function handle(req, res) {
   const u = new URL(req.url, 'http://x'), q = Object.fromEntries(u.searchParams)
   if (req.method === 'GET') {
     if (u.pathname === '/') return send(res, fs.readFileSync(path.join(__dirname, 'index.html')), 'text/html; charset=utf-8')
-    if (u.pathname === '/api/library')
-      return send(res, await Promise.all(sources().map(async n => ({ name: n, video: VIDEO_EXT.has(ext(n)),
+    if (u.pathname === '/api/library') {
+      const tags = LIB ? readTags() : {}
+      return send(res, await Promise.all(sources().map(async n => ({ name: n, video: VIDEO_EXT.has(ext(n)), tags: tags[n] || [],
         duration: await duration(path.join(LIB, n)), segments: json(jsonOf(path.join(LIB, n))) }))))
+    }
     if (u.pathname === '/api/clip') {  // small preview window: wav for audio, low-res WebM for video
       const p = source(q.ep || ''); if (!p) return fail(res, 'unknown source', 404)
       const start = Math.max(0, +q.start), dur = Math.min(+q.end - start, 120)
@@ -324,9 +359,9 @@ async function handle(req, res) {
           '-c:a', 'libopus', '-b:a', '128k', '-ac', '2', '-ar', '48000', '-f', 'webm', '-']), 'video/webm')
       return send(res, await ffmpeg([...decode(p, start, dur, 44100), '-f', 'wav', '-']), 'audio/wav')
     }
-    if (u.pathname === '/api/exports') return send(res, fs.readdirSync(EXP()).filter(f => ['.wav', '.mp4'].includes(ext(f))).sort())
+    if (u.pathname === '/api/exports') return send(res, !EXP() ? [] : fs.readdirSync(EXP()).filter(f => ['.wav', '.mp4'].includes(ext(f))).sort())
     if (u.pathname === '/api/settings')
-      return send(res, { ...settings(), dataDir: DATA, providers: Object.entries(PROVIDERS).map(([id, p]) => ({ id, name: p.name, blurb: p.blurb })) })
+      return send(res, { ...settings(), exportDir: EXP(), suggested: SUGGESTED, settingsFile: SETTINGS, providers: Object.entries(PROVIDERS).map(([id, p]) => ({ id, name: p.name, blurb: p.blurb })) })
     if (u.pathname === '/api/jobs') return send(res, JOBS.slice(-20))
     const prov = PROVIDERS[q.src]
     try {  // optional free-source browser
@@ -338,6 +373,9 @@ async function handle(req, res) {
     return fail(res, 'not found', 404)
   }
 
+  // nothing can be added before the user has said where files go (the page asks first; this is the backstop)
+  if (!LIB && ['/api/upload', '/api/add', '/api/export', '/api/tags'].includes(u.pathname))
+    return fail(res, 'choose where Signal Hunter keeps your files first (Settings)', 409)
   if (u.pathname === '/api/upload') {  // dropped/browsed file: raw body, ?name=<original file name>
     const name = q.name || ''
     if (!MEDIA_EXT.has(ext(name))) return fail(res, `not an audio/video file: ${name}`)
@@ -359,9 +397,14 @@ async function handle(req, res) {
   if (u.pathname === '/api/delete') {  // a source and its transcript; exports made from it stay
     const p = source(d.ep || ''); if (!p) return fail(res, 'unknown source', 404)
     for (const f of [p, jsonOf(p)]) fs.rmSync(f, { force: true })
+    setTags(path.basename(p), [])
     status(); return send(res, { ok: true })
   }
-  if (u.pathname === '/api/choose-folder') return send(res, { path: await chooseFolder() })
+  if (u.pathname === '/api/tags') {
+    const p = source(d.ep || ''); if (!p) return fail(res, 'unknown source', 404)
+    return send(res, { tags: setTags(path.basename(p), d.tags) })
+  }
+  if (u.pathname === '/api/choose-folder') return send(res, { path: await chooseFolder(d.start, d.title || 'Choose a folder') })
   if (u.pathname === '/api/open-folder') { openFolder(d.which === 'library' ? LIB : EXP()); return send(res, { ok: true }) }
   if (u.pathname !== '/api/export') return fail(res, 'not found', 404)
   const p = source(d.ep || ''); if (!p) return fail(res, 'unknown source', 404)
@@ -386,12 +429,12 @@ let lastStatus = ''
 function status() {  // shown on the Live device's panel; only on change, so "Sent …" stays up until then
   if (!Max) return
   const working = JOBS.find(j => j.state === 'working')
-  const s = working ? `Importing ${working.label}…` : `Ready · ${sources().length} sources`
+  const s = working ? `Importing ${working.label}…` : !LIB ? 'Ready · open it to choose a folder' : `Ready · ${sources().length} sources`
   if (s !== lastStatus) Max.outlet('status', lastStatus = s)
 }
 
 const port = +(process.argv[process.argv.indexOf('--port') + 1] || 0) || 8765
-fs.mkdirSync(LIB, { recursive: true })
+useData(settings().dataDir)
 http.createServer((req, res) => handle(req, res).catch(e => fail(res, e.message, 500)))
   .on('error', e => {
     if (e.code !== 'EADDRINUSE') throw e
@@ -400,9 +443,9 @@ http.createServer((req, res) => handle(req, res).catch(e => fail(res, e.message,
     Max?.outlet('status', 'Ready (shared with another Signal Hunter)')
   })
   .listen(port, '127.0.0.1', () => {
-    console.log(`Signal Hunter: http://localhost:${port}  (data: ${DATA})`)
+    console.log(`Signal Hunter: http://localhost:${port}  (data: ${DATA || 'not chosen yet'})`)
     // finish imports cut short last time (Live closed, device removed): files without a transcript yet
-    for (const f of fs.readdirSync(LIB)) {
+    for (const f of LIB ? fs.readdirSync(LIB) : []) {
       const p = path.join(LIB, f)
       if (f.endsWith('.part')) fs.rmSync(p, { force: true })
       else if (MEDIA_EXT.has(ext(f)) && !fs.existsSync(jsonOf(p))) enqueue(f, async () => [p])

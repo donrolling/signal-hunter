@@ -10,7 +10,12 @@ Find samples and clips by what's said. Add audio or video from your drive, any U
 
 Needs Live 12 Suite, or Live 12 with Max for Live. Nothing else to install: the device runs its own server with the Node for Max that ships with Live.
 
-1. Download `Signal-Hunter-windows.zip` or `Signal-Hunter-mac.zip` from the [latest release](https://github.com/donrolling/signal-hunter/releases/latest) and unzip it. Keep the `Signal Hunter` folder together, in your User Library or anywhere else.
+1. Download `Signal-Hunter-windows.zip` or `Signal-Hunter-mac.zip` from the [latest release](https://github.com/donrolling/signal-hunter/releases/latest) and unzip it. There's no installer: the unzipped `Signal Hunter` folder is the device.
+   Put the folder in your Live User Library, so it shows up under **User Library** in Live's browser:
+   - Windows: `Documents\Ableton\User Library\Signal Hunter`
+   - Mac: `Music/Ableton/User Library/Signal Hunter`
+
+   You can keep it anywhere else instead and add that folder to Live's browser with **Add Folder…** under Places. Either way, keep the folder together: the `.amxd` needs the files next to it.
 2. Drag `Signal Hunter.amxd` onto any audio track; audio passes through untouched. The panel shows **Ready** once its server is up.
 3. Click **Open Signal Hunter**.
 4. Click an empty clip slot on an audio track, select a region, then **Send to Live** (`S`). The WAV lands in that slot.

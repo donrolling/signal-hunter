@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/banner.svg" alt="Signal Hunter" width="720"></p>
+
 # Signal Hunter
 
 Find samples and clips by what's said. Pull audio or video from archive.org, URLs or local files, transcribe it with Whisper, then search, scrub and export WAVs for your DAW.

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 180">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1c2028"/><stop offset="1" stop-color="#0f1115"/></linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity=".035"/></pattern>
+  </defs>
+  <rect width="720" height="180" rx="18" fill="url(#bg)"/>
+  <rect width="720" height="180" rx="18" fill="url(#grid)"/>
+  <g transform="translate(40 42) scale(1.5)">
+    <circle cx="32" cy="32" r="19" fill="none" stroke="#f0b44c" stroke-width="3"/>
+    <path d="M32 4v7M32 53v7M4 32h7M53 32h7" stroke="#f0b44c" stroke-width="3" stroke-linecap="round"/>
+    <path d="M17 32h4l3-6 4 14 4-20 4 16 3-8 2 4h6" fill="none" stroke="#e9e6df" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="172" y="96" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="40" font-weight="700" letter-spacing="7" fill="#e9e6df">SIGNAL <tspan fill="#f0b44c">HUNTER</tspan></text>
+  <text x="174" y="128" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="16" letter-spacing="1" fill="#858c99">Find samples and clips by what's said.</text>
+</svg>

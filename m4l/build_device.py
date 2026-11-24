@@ -33,13 +33,14 @@ def patcher(rect, boxes, lines, **kw):
             "default_fontname": "Arial Bold", "gridsize": [8, 8], "boxes": boxes, "lines": lines, **kw}
 
 
-# floating window: the whole Signal Hunter page
-window = patcher([80, 80, 1280, 840], [
+# floating window: the whole Signal Hunter page. Max rects are [x, y, width, height]: match the jweb exactly.
+BG = [0.059, 0.067, 0.082, 1.0]  # the page's --bg, so any slack around the jweb blends in
+window = patcher([80, 80, 1200, 760], [
     box("w-in", "inlet", [10, 10, 30, 30], 0, 1),  # pcontrol "open" targets this patcher
     box("w-reload", "inlet", [60, 10, 30, 30], 0, 1),  # "reload" -> jweb (e.g. after starting the server)
     box("w-web", "jweb", [0, 0, 1200, 760], 1, 3, url=URL, pres=[0, 0, 1200, 760]),
     box("w-out", "outlet", [10, 780, 30, 30], 1, 0),
-], [line("w-web", 0, "w-out", 0), line("w-reload", 0, "w-web", 0)], openinpresentation=1, toolbarvisible=0, statusbarvisible=0)
+], [line("w-web", 0, "w-out", 0), line("w-reload", 0, "w-web", 0)], openinpresentation=1, toolbarvisible=0, statusbarvisible=0, bgcolor=BG, editing_bgcolor=BG)
 
 boxes = [
     # audio pass-through so the device can sit on any audio track

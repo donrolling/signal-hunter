@@ -16,7 +16,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: npm ci
+      # onnxruntime-node tries to fetch Linux CUDA binaries on install; the zips never ship them
+      - run: npm ci --onnxruntime-node-install-cuda=skip
       - run: python m4l/package.py
       - env:
           GH_TOKEN: ${{ github.token }}

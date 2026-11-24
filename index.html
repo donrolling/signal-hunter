@@ -268,11 +268,16 @@ function showSel() {
 async function load(ep, start, end, selA, selB) {
   start = Math.max(0, start)
   cur = { ep, start, end }
+  // drop the old clip's playback and selection now: the new clip can take seconds to prepare, and an
+  // export in that gap would cut the new source at the old selection's times
+  ws.pause(); regions.clearRegions(); region = null; showSel()
   // video sources: MP4 is the main export (with or without sound); WAV still there for the audio alone
   $('video').hidden = $('exportMp4').hidden = $('mp4Sound').hidden = !isVideo[ep]
   $('exportMp4').classList.toggle('primary', !!isVideo[ep]); $('export').classList.toggle('primary', !isVideo[ep])
-  $('info').textContent = `${ep} · window ${fmt(start)}–${fmt(end)}`
+  $('info').textContent = `${ep} · loading…`
   await ws.load(`/api/clip?ep=${encodeURIComponent(ep)}&start=${start}&end=${end}`)
+  if (cur.ep !== ep || cur.start !== start) return  // another line was clicked while this one loaded
+  $('info').textContent = `${ep} · window ${fmt(start)}–${fmt(end)}`
   ws.zoom(+$('zoom').value)
   regions.clearRegions(); region = null
   if (selA != null) {

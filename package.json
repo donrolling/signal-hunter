@@ -1,0 +1,13 @@
+{
+  "name": "signal-hunter",
+  "version": "0.2.0",
+  "description": "Find samples and clips by what's said.",
+  "main": "server.js",
+  "license": "MIT",
+  "private": true,
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.0",
+    "ffmpeg-static": "^5.2.0"
+  }
+}

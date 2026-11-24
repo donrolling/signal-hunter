@@ -174,10 +174,9 @@ function chooseFolder() {  // the OS's own folder picker; resolves '' if cancell
     const c = spawn(cmd, args), out = []
     c.stdout.on('data', d => out.push(d)); c.on('close', () => ok(Buffer.concat(out).toString().trim())); c.on('error', () => ok(''))
   })
-  if (process.platform === 'win32')  // TopMost owner so the dialog opens in front of Live
-    return run('powershell', ['-NoProfile', '-STA', '-Command', "Add-Type -AssemblyName System.Windows.Forms; " +
-      "$f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Export clips to'; $f.ShowNewFolderButton = $true; " +
-      "$o = New-Object System.Windows.Forms.Form -Property @{TopMost = $true}; if ($f.ShowDialog($o) -eq 'OK') { $f.SelectedPath }"])
+  if (process.platform === 'win32')  // the modern Explorer-style picker (pastable address bar), see pick_folder.ps1
+    return run('powershell', ['-NoProfile', '-STA', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'pick_folder.ps1'),
+      '-Start', settings().exportDir])
   if (process.platform === 'darwin')
     return run('osascript', ['-e', 'POSIX path of (choose folder with prompt "Export clips to")'])
   return run('zenity', ['--file-selection', '--directory'])

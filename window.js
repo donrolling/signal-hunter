@@ -6,7 +6,7 @@ outlets = 0;
 
 var last = "";
 var task = new Task(fit, this);
-task.interval = 250;  // cheap: one size check, and nothing to do unless the size changed
+task.interval = 40;  // fast enough that a window drag never shows a stretched page; a size check is cheap
 task.repeat();
 
 function fit() {

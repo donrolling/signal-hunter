@@ -56,7 +56,8 @@
   #wave { min-height:160px; border-radius:8px; border:1px solid #000; overflow:hidden;
           background:linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px) 0 0/100% 40px, #0a0c0f;
           box-shadow:inset 0 2px 12px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.04); }
-  #video { display:block; width:100%; max-height:min(360px, 32vh); object-fit:contain; background:#000; border:1px solid #000; border-radius:8px; margin-bottom:8px; }
+  /* sized by height, width from the video's own shape: never stretched, no wide black bars */
+  #video { display:block; height:min(480px, 32vh); width:auto; max-width:100%; object-fit:contain; margin:0 auto 8px; background:#000; border:1px solid #000; border-radius:8px; margin-bottom:8px; }
   #video[hidden], button[hidden] { display:none; }
   .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
   #name { flex:1; min-width:140px; }

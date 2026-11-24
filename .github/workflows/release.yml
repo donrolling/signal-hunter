@@ -1,0 +1,26 @@
+# Push a version tag (git tag v0.3.0 && git push origin v0.3.0) to build both zips and publish a Release.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: python m4l/package.py
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/Signal-Hunter-windows.zip dist/Signal-Hunter-mac.zip \
+            --title "Signal Hunter $GITHUB_REF_NAME" --generate-notes \
+            --notes "Unzip, keep the Signal Hunter folder together, and drag Signal Hunter.amxd onto an audio track. The Mac build is not signed by Apple and is less tested than Windows."

@@ -40,7 +40,13 @@ window = patcher([80, 80, 1200, 760], [
     box("w-reload", "inlet", [60, 10, 30, 30], 0, 1),  # "reload" -> jweb (e.g. after starting the server)
     box("w-web", "jweb", [0, 0, 1200, 760], 1, 3, url=URL, pres=[0, 0, 1200, 760]),
     box("w-out", "outlet", [10, 780, 30, 30], 1, 0),
-], [line("w-web", 0, "w-out", 0), line("w-reload", 0, "w-web", 0)], openinpresentation=1, toolbarvisible=0, statusbarvisible=0, bgcolor=BG, editing_bgcolor=BG)
+    # window title: "Signal Hunter" instead of "[signal_hunter_window]"
+    box("w-lb", "newobj", [110, 10, 60, 22], 1, 1, "loadbang"),
+    box("w-defer", "newobj", [110, 40, 60, 22], 1, 1, "deferlow"),
+    box("w-title", "message", [110, 70, 120, 22], 2, 1, 'title "Signal Hunter"'),
+    box("w-this", "newobj", [110, 100, 80, 22], 1, 1, "thispatcher"),
+], [line("w-web", 0, "w-out", 0), line("w-reload", 0, "w-web", 0),
+    line("w-lb", 0, "w-defer", 0), line("w-defer", 0, "w-title", 0), line("w-title", 0, "w-this", 0)], openinpresentation=1, toolbarvisible=0, statusbarvisible=0, bgcolor=BG, editing_bgcolor=BG)
 
 boxes = [
     # audio pass-through so the device can sit on any audio track

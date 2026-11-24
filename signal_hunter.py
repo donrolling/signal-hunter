@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 LIB, EXP = ROOT / "library", ROOT / "exports"
-VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov"}
+VIDEO_EXT = {".mp4", ".mkv", ".webm", ".mov", ".ogv", ".avi", ".mpeg", ".mpg"}
 MEDIA_EXT = {".mp3", ".wav", ".flac", ".ogg", ".m4a"} | VIDEO_EXT
 
 
@@ -26,17 +26,51 @@ def slug(s):
 
 # ---------- ingest ----------
 
+# preferred copy when an archive.org item has the same recording in several formats
+ARCHIVE_PREF = [".mp4", ".webm", ".mkv", ".mov", ".ogv", ".avi", ".mpeg", ".mpg",
+                ".mp3", ".flac", ".m4a", ".ogg", ".wav"]
+
+
+def archive_media(ident):
+    """One entry per recording in an archive.org item: [{name, url, size, video}]."""
+    meta = json.load(urllib.request.urlopen(f"https://archive.org/metadata/{urllib.parse.quote(ident)}"))
+    best = {}
+    for f in meta.get("files", []):
+        ext = Path(f["name"]).suffix.lower()
+        if ext not in ARCHIVE_PREF:
+            continue
+        key = re.sub(r"_(512kb|256kb|128kb|64kb|vbr)$", "", Path(f["name"]).stem.lower())  # derivatives share a stem
+        rank = (ARCHIVE_PREF.index(ext), -int(f.get("size") or 0))
+        if key not in best or rank < best[key][0]:
+            best[key] = (rank, f)
+    return [{"name": f["name"], "url": f"https://archive.org/download/{ident}/{urllib.parse.quote(f['name'])}",
+             "size": int(f.get("size") or 0), "video": Path(f["name"]).suffix.lower() in VIDEO_EXT}
+            for _, f in sorted(best.values(), key=lambda v: v[1]["name"].lower())]
+
+
 def archive_files(ident, match):
-    meta = json.load(urllib.request.urlopen(f"https://archive.org/metadata/{ident}"))
-    files = [f["name"] for f in meta.get("files", []) if f["name"].lower().endswith(".mp3")]
+    files = archive_media(ident)
     if match:
-        files = [f for f in files if match.lower() in f.lower()]
+        files = [f for f in files if match.lower() in f["name"].lower()]
     if len(files) > 5 and not match:
-        raise Oops(f"{len(files)} mp3s in {ident}; add a word from the file names to narrow it "
-                   f"(e.g. '{ident} {Path(files[0]).stem[-12:]}'). First few: " + ", ".join(files[:8]))
+        raise Oops(f"{len(files)} files in {ident}; add a word from the file names to narrow it "
+                   f"(e.g. '{ident} {Path(files[0]['name']).stem[-12:]}'). First few: "
+                   + ", ".join(f["name"] for f in files[:8]))
     if not files:
-        raise Oops(f"no matching mp3s in {ident}")
-    return [f"https://archive.org/download/{ident}/{urllib.parse.quote(f)}" for f in files]
+        raise Oops(f"no matching audio or video in {ident}")
+    return [f["url"] for f in files]
+
+
+def archive_search(q, kind="", page=1):
+    types = {"audio": "audio", "video": "movies"}.get(kind, "(audio OR movies)")
+    w = " AND ".join(re.findall(r"\w+", q))  # every word must match, in the title, subject or creator
+    match = f"(title:({w}) OR subject:({w}) OR creator:({w})) AND " if w else ""
+    params = [("q", f"{match}mediatype:{types}"), ("fl[]", "identifier"), ("fl[]", "title"),
+              ("fl[]", "mediatype"), ("fl[]", "year"), ("sort[]", "downloads desc"),
+              ("rows", "30"), ("page", str(page)), ("output", "json")]
+    r = json.load(urllib.request.urlopen("https://archive.org/advancedsearch.php?" + urllib.parse.urlencode(params)))
+    return [{"id": d["identifier"], "title": d.get("title") or d["identifier"], "year": d.get("year", ""),
+             "video": d.get("mediatype") == "movies"} for d in r["response"]["docs"]]
 
 
 def cli_say(msg, progress=None):
@@ -192,6 +226,13 @@ class H(BaseHTTPRequestHandler):
             return self.send(sorted(p.name for p in EXP.iterdir() if p.suffix in (".wav", ".mp4")))
         if u.path == "/api/jobs":
             return self.send(JOBS[-20:])
+        try:  # optional archive.org browser
+            if u.path == "/api/archive/search":
+                return self.send(archive_search(q.get("q", ""), q.get("kind", ""), int(q.get("page", 1))))
+            if u.path == "/api/archive/files":
+                return self.send(archive_media(q.get("id", "")))
+        except OSError as e:
+            return self.send({"error": f"couldn't reach archive.org: {e}"}, code=502)
         self.send({"error": "not found"}, code=404)
 
     def do_POST(self):

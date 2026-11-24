@@ -88,20 +88,53 @@
           background:rgba(15,17,21,.88); border:3px dashed var(--accent); color:var(--accent); font-size:22px; }
   #drop[hidden] { display:none; }
   kbd { border:1px solid rgba(255,255,255,.18); border-radius:3px; padding:0 4px; margin-left:4px; font:10px var(--mono); opacity:.8; }
+  /* optional archive.org browser */
+  #arch { position:fixed; inset:0; z-index:15; background:rgba(5,6,8,.7); display:flex; align-items:center; justify-content:center; padding:24px; }
+  #arch[hidden] { display:none; }
+  .arch-box { width:min(980px,100%); height:100%; display:flex; flex-direction:column; background:var(--panel); border:1px solid #000;
+              border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,.6); overflow:hidden; }
+  .arch-head { display:flex; align-items:center; gap:10px; padding:12px 16px; background:linear-gradient(#1c2028,#15181e); border-bottom:1px solid #000; }
+  .dim { color:var(--dim); font-size:12px; } .arch-head .dim { flex:1; }
+  .arch-q { padding:0 16px; } #archQ { flex:1; }
+  .seg3 { display:flex; } .seg3 button { border-radius:0; margin-left:-1px; }
+  .seg3 button:first-child { border-radius:7px 0 0 7px; } .seg3 button:last-child { border-radius:0 7px 7px 0; }
+  #archBody { overflow:auto; padding:12px 16px 16px; flex:1; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:10px; }
+  .card { background:#0b0d10; border:1px solid var(--line); border-radius:8px; overflow:hidden; cursor:pointer; }
+  .card:hover { border-color:var(--accent); }
+  .card img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; background:#000; }
+  .card .meta { padding:6px 8px; font-size:12px; }
+  .card .meta div { overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  .tag { font:10px var(--mono); color:var(--accent); letter-spacing:.08em; }
+  .files .f { display:grid; grid-template-columns:44px 1fr auto auto; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #1b1e25; }
+  .files .f span:nth-child(2) { overflow-wrap:anywhere; }
+  .err { color:#e8766b; }
+  a { color:var(--accent); }
   @media (max-width:720px) { main { grid-template-columns:1fr; grid-template-rows:40% 1fr; } #results { border-right:0; border-bottom:1px solid #000; } }
 </style>
 </head>
 <body>
 <div id="drop" hidden>Drop audio or video to add it</div>
+<div id="arch" hidden><div class="arch-box">
+  <div class="arch-head"><b>Search archive.org</b><span class="dim">Optional: public-domain radio, films, newsreels and more</span>
+    <button class="x" id="archClose" title="Close (Esc)">×</button></div>
+  <div class="row arch-q">
+    <input id="archQ" placeholder="Titles, subjects or creators, e.g. x minus one, sci-fi trailer">
+    <div class="seg3" id="archKind"><button data-k="" class="on">All</button><button data-k="audio">Audio</button><button data-k="video">Video</button></div>
+    <button id="archGo" class="primary">Search</button>
+  </div>
+  <div id="archBody"><p class="dim">Search for a show, film or topic. Results are sorted by popularity; pick one to see its files.</p></div>
+</div></div>
 <header>
   <div class="brand"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="19" fill="none" stroke="#f0b44c" stroke-width="3"/><path d="M32 4v7M32 53v7M4 32h7M53 32h7" stroke="#f0b44c" stroke-width="3" stroke-linecap="round"/><path d="M17 32h4l3-6 4 14 4-20 4 16 3-8 2 4h6" fill="none" stroke="#e9e6df" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>SIGNAL <b>HUNTER</b></h1></div>
   <input id="q" placeholder="Search what they say…" autofocus>
   <div id="epPick"><button id="epBtn">All sources ▾</button><div id="epList" hidden></div></div>
   <span id="count"></span>
   <div id="addRow">
-    <input id="addSrc" placeholder="Add a source: paste a URL, archive.org link or file path — or drop files anywhere">
+    <input id="addSrc" placeholder="Add a source: paste a URL or file path — or drop files anywhere">
     <button id="addBtn">Add</button>
     <button id="browseBtn">Browse…</button>
+    <button id="archBtn">Search archive.org</button>
     <input id="fileIn" type="file" multiple accept="audio/*,video/*,.mkv" hidden>
   </div>
   <div id="imports" hidden></div>
@@ -251,6 +284,7 @@ async function refreshExports() {
 }
 
 document.addEventListener('keydown', e => {
+  if (!$('arch').hidden) { if (e.key === 'Escape') $('arch').hidden = true; return }
   if (e.target.matches('input')) return
   if (e.code === 'Space') { e.preventDefault(); playSel() }
   else if (e.key === 'l' || e.key === 'L') toggleLoop()
@@ -362,6 +396,63 @@ document.addEventListener('drop', e => {
   e.preventDefault(); dragDepth = 0; $('drop').hidden = true
   if (e.dataTransfer.files.length) upload([...e.dataTransfer.files])
 })
+
+// ---- optional archive.org browser: search, pick an item, add files (each goes through /api/add like a pasted URL)
+let archKind = '', archPage = 1, archSaved = '', archReq = 0
+const mb = n => n ? `${Math.max(1, Math.round(n / 2 ** 20))} MB` : ''
+const getJSON = u => fetch(u).then(r => r.json()).catch(() => ({ error: 'the Signal Hunter server is not reachable' }))
+$('archBtn').onclick = () => { $('arch').hidden = false; $('archQ').focus(); }
+$('archClose').onclick = () => { $('arch').hidden = true }
+$('arch').onclick = e => { if (e.target.id === 'arch') $('arch').hidden = true }
+$('archGo').onclick = () => archSearch()
+$('archQ').addEventListener('keydown', e => { if (e.key === 'Enter') archSearch() })
+$('archKind').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return
+  archKind = b.dataset.k
+  $('archKind').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b))
+  archSearch()
+}
+async function archSearch(more = false) {
+  if (!$('archQ').value.trim()) return $('archQ').focus()
+  archPage = more ? archPage + 1 : 1
+  if (!more) $('archBody').innerHTML = '<p class="dim">Searching…</p>'
+  const req = ++archReq
+  const r = await getJSON(`/api/archive/search?q=${encodeURIComponent($('archQ').value)}&kind=${archKind}&page=${archPage}`)
+  if (req !== archReq) return  // a newer search was started; drop this answer
+  if (r.error) return ($('archBody').innerHTML = `<p class="err">${esc(r.error)}</p>`)
+  const cards = r.map(d => `<div class="card" data-id="${esc(d.id)}" data-title="${esc(String(d.title))}">` +
+    `<img loading="lazy" src="https://archive.org/services/img/${encodeURIComponent(d.id)}" alt="">` +
+    `<div class="meta"><span class="tag">${d.video ? 'VIDEO' : 'AUDIO'}${d.year ? ' · ' + esc(String(d.year)) : ''}</span>` +
+    `<div>${esc(String(d.title))}</div></div></div>`).join('')
+  if (more) $('archCards').insertAdjacentHTML('beforeend', cards)
+  else $('archBody').innerHTML = r.length ? `<div class="cards" id="archCards">${cards}</div><p><button id="archMore">More results</button></p>`
+    : '<p class="dim">Nothing found. Try fewer or different words.</p>'
+  if (r.length < 30) $('archMore')?.remove()
+}
+$('archBody').onclick = async e => {
+  const t = e.target
+  if (t.id === 'archMore') return archSearch(true)
+  if (t.id === 'archBack') return ($('archBody').innerHTML = archSaved)
+  if (t.dataset.url) {
+    t.disabled = true; t.textContent = 'Adding…'
+    const r = await fetch('/api/add', { method: 'POST', body: JSON.stringify({ src: t.dataset.url }) }).then(r => r.json())
+      .catch(() => ({ error: 'the Signal Hunter server is not reachable' }))
+    if (r.error) { t.disabled = false; t.textContent = 'Add'; return localError(t.dataset.url, r.error) }
+    t.textContent = 'Added ✓'; startPolling(); return
+  }
+  const card = t.closest('.card'); if (!card) return
+  archSaved = $('archBody').innerHTML
+  const id = card.dataset.id
+  $('archBody').innerHTML = '<p class="dim">Loading files…</p>'
+  const files = await getJSON(`/api/archive/files?id=${encodeURIComponent(id)}`)
+  const head = `<p><button id="archBack">◀ Back</button> <b>${esc(card.dataset.title)}</b> ` +
+    `<a class="dim" href="https://archive.org/details/${encodeURIComponent(id)}" target="_blank">open on archive.org</a></p>`
+  $('archBody').innerHTML = head + (files.error ? `<p class="err">${esc(files.error)}</p>`
+    : !files.length ? '<p class="dim">No audio or video files in this item.</p>'
+    : `<p class="dim">${files.length} file${files.length === 1 ? '' : 's'}. Added files download and transcribe in the background; watch the imports list.</p>` +
+      `<div class="files">${files.map(f => `<div class="f"><span class="tag">${f.video ? 'VIDEO' : 'AUDIO'}</span>` +
+        `<span>${esc(f.name)}</span><span class="dim">${mb(f.size)}</span><button data-url="${esc(f.url)}">Add</button></div>`).join('')}</div>`)
+}
 
 await loadLibrary(); refreshExports(); startPolling()
 </script>

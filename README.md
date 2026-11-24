@@ -22,6 +22,7 @@ python signal_hunter.py serve   # then open http://localhost:8765
 
 - **Drop** audio or video files anywhere on the page, or click **Browse…**
 - **Paste** into the "Add a source" box: a local file path (quotes from *Copy as path* are fine), a direct audio/video URL, or an archive.org link or identifier.
+- **Search archive.org** (optional) opens a browser for public-domain radio, films and more: search, open an item, click **Add** on the files you want. Items that hold the same recording in several formats show one copy (mp4 first).
 
 From a terminal instead: `python signal_hunter.py add <url | archive.org id | file> [--match WORD]`.
 

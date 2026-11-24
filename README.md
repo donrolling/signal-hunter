@@ -18,7 +18,7 @@ pip install faster-whisper
 python signal_hunter.py serve   # then open http://localhost:8765
 ```
 
-**Adding sources** (the server downloads, then transcribes in the background; the new source shows up in the episode picker when it's done):
+**Adding sources** (the server downloads, then transcribes in the background; the new source shows up in the source picker when it's done):
 
 - **Drop** audio or video files anywhere on the page, or click **Browse…**
 - **Paste** into the "Add a source" box: a local file path (quotes from *Copy as path* are fine), a direct audio/video URL, or an archive.org link or identifier.

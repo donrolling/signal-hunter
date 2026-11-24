@@ -162,7 +162,7 @@ class H(BaseHTTPRequestHandler):
     def ep(self, name):
         p = next((e for e in episodes() if e.name == name), None)  # whitelist: no path traversal
         if not p:
-            self.send({"error": "unknown episode"}, code=404)
+            self.send({"error": "unknown source"}, code=404)
         return p
 
     def do_GET(self):

@@ -550,6 +550,11 @@ const mb = n => n ? `${Math.max(1, Math.round(n / 2 ** 20))} MB` : ''
 const getJSON = u => fetch(u).then(r => r.json()).catch(() => ({ error: 'the Signal Hunter server is not reachable' }))
 const post = (u, body) => fetch(u, { method: 'POST', body: JSON.stringify(body || {}) }).then(r => r.json())
   .catch(() => ({ error: 'the Signal Hunter server is not reachable' }))
+// outside links open in the system browser: in Live's window they'd replace Signal Hunter, with no way back
+document.addEventListener('click', e => {
+  const l = e.target.closest('a[target=_blank]'); if (!l || !/^https?:/.test(l.href)) return
+  e.preventDefault(); post('/api/open-url', { url: l.href })
+})
 const provider = () => S.providers.find(p => p.id === archSrcId)
 $('archBtn').onclick = () => { $('arch').hidden = false; $('archQ').focus() }
 $('archClose').onclick = () => { $('arch').hidden = true }

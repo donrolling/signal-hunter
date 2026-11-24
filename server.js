@@ -405,6 +405,10 @@ async function handle(req, res) {
     return send(res, { tags: setTags(path.basename(p), d.tags) })
   }
   if (u.pathname === '/api/choose-folder') return send(res, { path: await chooseFolder(d.start, d.title || 'Choose a folder') })
+  if (u.pathname === '/api/open-url') {  // in Live's window, links would replace the page; open them in the browser
+    if (!/^https?:\/\//i.test(d.url || '')) return fail(res, 'bad url')
+    openFolder(d.url); return send(res, { ok: true })
+  }
   if (u.pathname === '/api/open-folder') { openFolder(d.which === 'library' ? LIB : EXP()); return send(res, { ok: true }) }
   if (u.pathname !== '/api/export') return fail(res, 'not found', 404)
   const p = source(d.ep || ''); if (!p) return fail(res, 'unknown source', 404)

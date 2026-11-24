@@ -64,13 +64,14 @@ module.exports = async a => {
   await cut(() => waitFor(`/Saved.*wav/.test(document.querySelector('#status').textContent)`))
   await sleep(1800)
 
-  // 8. Live
+  // 8. Live: real footage goes here (demo/live.js splices it in at this mark)
   log('Live')
-  await caption('In Ableton Live, Send to Live drops the clip straight into a clip slot', 'Max for Live device · Live 12')
-  await sleep(3400); await hide(); await sleep(500)
+  await hide(); await sleep(500)
+  a.mark('live'); await sleep(600)  // the crossfade into Live uses 0.4 s past the mark: keep the end card out of it
 
   // 9. end card
   log('end card')
+  a.mark('card')
   await card(`{logo}<h1>SIGNAL <span>HUNTER</span></h1><p>Free · Windows and Mac · runs in Ableton Live or your browser</p><small>github.com/donrolling/signal-hunter</small>`)
   await sleep(4000)
 }

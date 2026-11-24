@@ -71,6 +71,6 @@ From a clone of this repo, `npm install` then `npm start` does the same.
 
 - `server.js` is the server, `index.html` the whole page, `logo.js` the device panel's logo, `window.js` keeps the page sized to its window.
 - `python m4l/build_device.py` writes `Signal Hunter.amxd` (edit the script, not the `.amxd`).
-- `node demo/record.js` re-records the demo video (`dist/signal-hunter-demo.mp4`); the top of the file says how to set up its two public-domain sources.
+- `node demo/record.js && node demo/live.js` re-records the demo video (`dist/signal-hunter-demo.mp4`): the browser walkthrough, then your Ableton Live screen recording spliced in. The tops of both files say what they need.
 - `python m4l/package.py` builds `dist/Signal-Hunter-windows.zip` and `dist/Signal-Hunter-mac.zip`, with ffmpeg and the speech engine for each platform.
 - To try the device from a checkout, run `npm install` and drag the `Signal Hunter.amxd` in the repo root onto a track.

@@ -45,7 +45,7 @@ async function record() {
   const ws = new WebSocket(targets.find(t => t.type === 'page').webSocketDebuggerUrl)
   await new Promise(r => ws.onopen = r)
   let id = 0, cutAt = 0, offset = 0, t0 = 0
-  const pending = {}, frames = [], sound = []  // sound: { at (video seconds), ep, from (source seconds), to }
+  const pending = {}, frames = [], sound = [], marks = {}  // sound: { at (video seconds), ep, from (source seconds), to }
   const now = () => Date.now() / 1000 - offset - t0  // the video's clock: wall time minus cuts
   let playing = null
   const media = e => {  // events from the page's <video> (which wavesurfer plays through)
@@ -81,6 +81,7 @@ async function record() {
   const mouse = (type, x, y, extra = {}) => send('Input.dispatchMouseEvent', { type, x, y, button: 'left', clickCount: type === 'mouseMoved' ? 0 : 1, ...extra })
   const api = {
     sleep, js, center,
+    mark: name => { marks[name] = now() },  // video times for demo/live.js (where the Live footage goes)
     log: t => console.log(new Date().toISOString().slice(11, 19), t),
     // leave slow waits (a clip loading) out of the video: frames stop, and later ones close the gap
     async cut(fn) { const s = Date.now() / 1000; cutAt = s; try { await fn() } finally { offset += Date.now() / 1000 - s; cutAt = 0 } },
@@ -122,10 +123,11 @@ async function record() {
   const inputs = clips.flatMap(s => ['-ss', s.from.toFixed(3), '-t', s.dur.toFixed(3), '-i', path.join(DATA, 'library', s.ep)])
   const chains = clips.map((s, i) => `[${i + 1}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=6dB,afade=t=in:d=0.01,afade=t=out:st=${Math.max(0, s.dur - 0.02).toFixed(3)}:d=0.02,adelay=${Math.round(s.at * 1000)}:all=1[a${i}]`)
   const mix = clips.length ? `${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:normalize=0,apad,atrim=0:${dur.toFixed(3)}[aout]` : ''
-  const out = path.join(OUT, 'signal-hunter-demo.mp4')
+  const out = path.join(WORK, 'browser.mp4')  // demo/live.js adds the Live footage and writes dist/signal-hunter-demo.mp4
   execFileSync(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', path.join(WORK, 'frames.txt'), ...inputs,
     ...(clips.length ? ['-filter_complex', [...chains, mix].join(';'), '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k'] : []),
     '-vf', 'fps=30,format=yuv420p', '-c:v', 'libx264', '-crf', '18', '-preset', 'slow', '-movflags', '+faststart', out])
+  fs.writeFileSync(path.join(WORK, 'marks.json'), JSON.stringify({ ...marks, end: dur }))
   console.log(`wrote ${out}: ${dur.toFixed(1)} s, ${clips.length} sound clips`)
   for (const s of clips) console.log(`  ${s.at.toFixed(2)}s  ${s.ep} ${s.from.toFixed(2)} +${s.dur.toFixed(2)}`)
 }

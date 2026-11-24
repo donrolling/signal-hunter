@@ -55,7 +55,8 @@ def patcher(rect, boxes, lines, **kw):
 window = patcher([80, 80, 1200, 760], [
     box("w-in", "inlet", [10, 10, 30, 30], 0, 1),  # pcontrol "open" targets this patcher
     box("w-reload", "inlet", [60, 10, 30, 30], 0, 1),  # "reload" -> jweb (e.g. after the server restarts)
-    box("w-web", "jweb", [0, 0, 1200, 760], 1, 3, url=URL, pres=[0, 0, 1200, 760]),
+    box("w-web", "jweb", [0, 0, 1200, 760], 1, 3, url=URL, pres=[0, 0, 1200, 760], varname="web"),
+    box("w-fit", "newobj", [250, 10, 70, 22], 1, 0, "js window.js"),  # page follows the window size
     box("w-out", "outlet", [10, 780, 30, 30], 1, 0),
     # window title: "Signal Hunter" instead of "[signal_hunter_window]"
     box("w-lb", "newobj", [110, 10, 60, 22], 1, 1, "loadbang"),

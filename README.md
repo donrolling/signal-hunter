@@ -21,7 +21,7 @@ The server downloads and transcribes in the background; each import shows its pr
 
 - **Drop** audio or video files anywhere on the page, or click **Browse…**
 - **Paste** a local file path (quotes from *Copy as path* are fine) or any direct audio/video URL.
-- **Search archive.org** (optional) browses public-domain radio, films and more: search, open an item, click **Add** on the files you want. Pasting an archive.org link works too; for big collections, add a word from the file names after the link (`https://archive.org/details/OTRR_X_Minus_One_Singles MarsIsHeaven`).
+- **Free sources** (optional) searches archive.org (public-domain radio, films, newsreels), Wikimedia Commons (freely licensed; some files ask for credit) and NASA's image and video library (public domain). Open a result and click **Add** on the files you want. Turn sources on or off in Settings. Pasting an archive.org link works too; for big collections, add a word from the file names after the link (`https://archive.org/details/OTRR_X_Minus_One_Singles MarsIsHeaven`).
 
 ## Finding and exporting
 
@@ -29,11 +29,16 @@ The server downloads and transcribes in the background; each import shows its pr
 - Drag on the waveform to select. `space` plays the selection, `L` loops it, `E` exports a WAV.
 - Video sources show a synced preview; `M` exports a frame-accurate MP4 at full resolution.
 - `◀ 10s` / `10s ▶` slide the window; zoom in for precise edges.
-- Exports are 24-bit WAV at the source sample rate, or H.264/AAC MP4.
+- Exports are 24-bit WAV at the source sample rate, or H.264 MP4 with or without sound. **Open folder** next to Exports shows them.
+- Sources with no speech (music, silent film) list 30-second rows to browse instead.
+
+## Settings
+
+The ⚙ button: export folder (type a path or **Choose…**), which free sources to show, and interface size (also Ctrl/⌘ + and −). In Live, drag the Signal Hunter window bigger and the page fills it.
 
 ## Where things live
 
-- Your sources, transcripts and exports: `Documents/Signal Hunter` (set `SIGNAL_HUNTER_DATA` to move it).
+- Your sources, transcripts, exports and `settings.json`: `Documents/Signal Hunter` (set `SIGNAL_HUNTER_DATA` to move it).
 - The speech model: `%LOCALAPPDATA%\Signal Hunter` on Windows, `~/Library/Caches/Signal Hunter` on a Mac.
 - Search works on speech; music-only audio has nothing to search. Uses Whisper `small.en` (English).
 
@@ -43,7 +48,7 @@ With [Node.js](https://nodejs.org/) 20 or newer: `npm install`, then `npm start`
 
 ## Development
 
-- `server.js` is the server, `index.html` the whole page, `logo.js` the device panel's logo.
+- `server.js` is the server, `index.html` the whole page, `logo.js` the device panel's logo, `window.js` keeps the page sized to its window.
 - `python m4l/build_device.py` writes `Signal Hunter.amxd` (edit the script, not the `.amxd`).
 - `python m4l/package.py` builds `dist/Signal-Hunter-windows.zip` and `dist/Signal-Hunter-mac.zip`, with ffmpeg and the speech engine for each platform.
 - To try the device from a checkout, run `npm install` and drag the `Signal Hunter.amxd` in the repo root onto a track.

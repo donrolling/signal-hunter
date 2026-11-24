@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 DIST, CACHE = ROOT / "dist", ROOT / "dist" / ".cache"
-FILES = ["Signal Hunter.amxd", "server.js", "index.html", "logo.js", "package.json", "LICENSE"]
+FILES = ["Signal Hunter.amxd", "server.js", "index.html", "logo.js", "window.js", "package.json", "LICENSE"]
 SKIP = {"ffmpeg-static", "onnxruntime-web", "@img", "sharp", "@derhuerst"}  # not used at runtime (or shipped in bin/)
 FFMPEG = "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-{}-{}.gz"
 TARGETS = {"windows": [("win32", "x64")], "mac": [("darwin", "arm64"), ("darwin", "x64")]}

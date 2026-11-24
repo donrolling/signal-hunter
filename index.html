@@ -56,10 +56,10 @@
   #wave { min-height:160px; border-radius:8px; border:1px solid #000; overflow:hidden;
           background:linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px) 0 0/100% 40px, #0a0c0f;
           box-shadow:inset 0 2px 12px rgba(0,0,0,.8), 0 1px 0 rgba(255,255,255,.04); }
-  #video { display:block; width:100%; max-height:360px; background:#000; border:1px solid #000; border-radius:8px; margin-bottom:8px; }
+  #video { display:block; width:100%; max-height:min(360px, 32vh); object-fit:contain; background:#000; border:1px solid #000; border-radius:8px; margin-bottom:8px; }
   #video[hidden], button[hidden] { display:none; }
   .row { display:flex; gap:8px; align-items:center; margin-top:10px; flex-wrap:wrap; }
-  #name { flex:1; min-width:200px; }
+  #name { flex:1; min-width:140px; }
   #sel { color:var(--accent); font:13px var(--mono); }
   #status { color:var(--dim); font-size:12px; }
   h3 { font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); margin:24px 0 8px; font-weight:600; }
@@ -90,8 +90,17 @@
   #drop[hidden] { display:none; }
   kbd { border:1px solid rgba(255,255,255,.18); border-radius:3px; padding:0 4px; margin-left:4px; font:10px var(--mono); opacity:.8; }
   /* optional archive.org browser */
-  #arch { position:fixed; inset:0; z-index:15; background:rgba(5,6,8,.7); display:flex; align-items:center; justify-content:center; padding:24px; }
-  #arch[hidden] { display:none; }
+  #arch, #settings { position:fixed; inset:0; z-index:15; background:rgba(5,6,8,.7); display:flex; align-items:center; justify-content:center; padding:24px; }
+  #arch[hidden], #settings[hidden] { display:none; }
+  .arch-box.small { height:auto; max-height:100%; width:min(660px, 100%); }
+  #setBody { padding:0 16px 16px; overflow:auto; }
+  #setBody h3:first-child { margin-top:14px; }
+  label.src { text-transform:none; letter-spacing:0; font-size:13px; color:var(--text); align-items:flex-start; margin:8px 0; }
+  label.src span { color:var(--dim); }
+  input[type=checkbox] { accent-color:var(--accent); box-shadow:none; padding:0; margin-top:3px; }
+  #setBtn { padding:7px 9px; }
+  h3 .mini { margin-left:10px; padding:2px 8px; font-size:11px; letter-spacing:0; text-transform:none; }
+  #expDir { font:11px var(--mono); margin:-4px 0 8px; overflow-wrap:anywhere; }
   .arch-box { width:min(980px,100%); height:100%; display:flex; flex-direction:column; background:var(--panel); border:1px solid #000;
               border-radius:10px; box-shadow:0 20px 60px rgba(0,0,0,.6); overflow:hidden; }
   .arch-head { display:flex; align-items:center; gap:10px; padding:12px 16px; background:linear-gradient(#1c2028,#15181e); border-bottom:1px solid #000; }
@@ -117,25 +126,41 @@
 <body>
 <div id="drop" hidden>Drop audio or video to add it</div>
 <div id="arch" hidden><div class="arch-box">
-  <div class="arch-head"><b>Search archive.org</b><span class="dim">Optional: public-domain radio, films, newsreels and more</span>
+  <div class="arch-head"><b>Free sources</b><div class="seg3" id="archSrc"></div><span class="dim" id="archBlurb"></span>
     <button class="x" id="archClose" title="Close (Esc)">×</button></div>
   <div class="row arch-q">
-    <input id="archQ" placeholder="Titles, subjects or creators, e.g. x minus one, sci-fi trailer">
+    <input id="archQ" placeholder="e.g. x minus one, rocket launch, newsreel">
     <div class="seg3" id="archKind"><button data-k="" class="on">All</button><button data-k="audio">Audio</button><button data-k="video">Video</button></div>
     <button id="archGo" class="primary">Search</button>
   </div>
-  <div id="archBody"><p class="dim">Search for a show, film or topic. Results are sorted by popularity; pick one to see its files.</p></div>
+  <div id="archBody"><p class="dim">Search for a show, film or topic, then pick a result to see its files. Turn sources on or off in Settings.</p></div>
+</div></div>
+<div id="settings" hidden><div class="arch-box small">
+  <div class="arch-head"><b>Settings</b><span class="dim" id="setFile"></span><button class="x" id="setClose" title="Close (Esc)">×</button></div>
+  <div id="setBody">
+    <h3>Export folder</h3>
+    <div class="row"><input id="expPath" style="flex:1" spellcheck="false"><button id="expChoose">Choose…</button><button id="expOpen">Open</button></div>
+    <p class="dim" id="expMsg"></p>
+    <h3>Free sources</h3>
+    <div id="srcList"></div>
+    <h3>Interface size</h3>
+    <div class="row"><input type="range" id="uiScale" min="0.8" max="1.6" step="0.1"><span id="uiScaleV"></span>
+      <span class="dim">Ctrl + / Ctrl − (⌘ on a Mac) also work.</span></div>
+    <h3>Library</h3>
+    <div class="row"><span class="dim" id="libPath" style="flex:1; overflow-wrap:anywhere"></span><button id="libOpen">Open</button></div>
+  </div>
 </div></div>
 <header>
   <div class="brand"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><circle cx="32" cy="32" r="19" fill="none" stroke="#f0b44c" stroke-width="3"/><path d="M32 4v7M32 53v7M4 32h7M53 32h7" stroke="#f0b44c" stroke-width="3" stroke-linecap="round"/><path d="M17 32h4l3-6 4 14 4-20 4 16 3-8 2 4h6" fill="none" stroke="#e9e6df" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg><h1>SIGNAL <b>HUNTER</b></h1></div>
   <input id="q" placeholder="Search what they say…" autofocus>
   <div id="epPick"><button id="epBtn">All sources ▾</button><div id="epList" hidden></div></div>
   <span id="count"></span>
+  <button id="setBtn" title="Settings">⚙</button>
   <div id="addRow">
     <input id="addSrc" placeholder="Add a source: paste a URL or file path — or drop files anywhere">
     <button id="addBtn">Add</button>
     <button id="browseBtn">Browse…</button>
-    <button id="archBtn">Search archive.org</button>
+    <button id="archBtn">Free sources</button>
     <input id="fileIn" type="file" multiple accept="audio/*,video/*,.mkv" hidden>
   </div>
   <div id="imports" hidden></div>
@@ -163,7 +188,8 @@
       <button id="toLive" class="primary" hidden>Send to Live <kbd>S</kbd></button>
     </div>
     <div class="row" id="status"></div>
-    <h3>Exports</h3>
+    <h3>Exports <button id="openExp" class="mini">Open folder</button></h3>
+    <div class="dim" id="expDir"></div>
     <ul id="exports"></ul>
   </section>
 </main>
@@ -319,7 +345,7 @@ async function refreshExports() {
 }
 
 document.addEventListener('keydown', e => {
-  if (!$('arch').hidden) { if (e.key === 'Escape') $('arch').hidden = true; return }
+  for (const m of ['arch', 'settings']) if (!$(m).hidden) { if (e.key === 'Escape') $(m).hidden = true; return }
   if (e.target.matches('input')) return
   if (e.code === 'Space') { e.preventDefault(); togglePlay() }
   else if (e.key === 'l' || e.key === 'L') toggleLoop()
@@ -432,11 +458,14 @@ document.addEventListener('drop', e => {
   if (e.dataTransfer.files.length) upload([...e.dataTransfer.files])
 })
 
-// ---- optional archive.org browser: search, pick an item, add files (each goes through /api/add like a pasted URL)
-let archKind = '', archPage = 1, archSaved = '', archReq = 0
+// ---- free sources (archive.org, Wikimedia Commons, NASA): search, pick an item, add files (each goes through /api/add)
+let archKind = '', archPage = 1, archSaved = '', archReq = 0, archSrcId = ''
 const mb = n => n ? `${Math.max(1, Math.round(n / 2 ** 20))} MB` : ''
 const getJSON = u => fetch(u).then(r => r.json()).catch(() => ({ error: 'the Signal Hunter server is not reachable' }))
-$('archBtn').onclick = () => { $('arch').hidden = false; $('archQ').focus(); }
+const post = (u, body) => fetch(u, { method: 'POST', body: JSON.stringify(body || {}) }).then(r => r.json())
+  .catch(() => ({ error: 'the Signal Hunter server is not reachable' }))
+const provider = () => S.providers.find(p => p.id === archSrcId)
+$('archBtn').onclick = () => { $('arch').hidden = false; $('archQ').focus() }
 $('archClose').onclick = () => { $('arch').hidden = true }
 $('arch').onclick = e => { if (e.target.id === 'arch') $('arch').hidden = true }
 $('archGo').onclick = () => archSearch()
@@ -447,16 +476,27 @@ $('archKind').onclick = e => {
   $('archKind').querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b))
   archSearch()
 }
+$('archSrc').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return
+  archSrcId = b.dataset.src; renderSources(); archSearch()
+}
+function renderSources() {  // tabs for the enabled sources; the button hides when none are on
+  const on = S.providers.filter(p => S.sources[p.id])
+  $('archBtn').hidden = !on.length
+  if (!on.some(p => p.id === archSrcId)) archSrcId = on[0]?.id || ''
+  $('archSrc').innerHTML = on.map(p => `<button data-src="${p.id}" class="${p.id === archSrcId ? 'on' : ''}">${esc(p.name)}</button>`).join('')
+  $('archBlurb').textContent = provider()?.blurb || ''
+}
 async function archSearch(more = false) {
-  if (!$('archQ').value.trim()) return $('archQ').focus()
+  if (!$('archQ').value.trim() || !archSrcId) return $('archQ').focus()
   archPage = more ? archPage + 1 : 1
   if (!more) $('archBody').innerHTML = '<p class="dim">Searching…</p>'
   const req = ++archReq
-  const r = await getJSON(`/api/archive/search?q=${encodeURIComponent($('archQ').value)}&kind=${archKind}&page=${archPage}`)
+  const r = await getJSON(`/api/free/search?src=${archSrcId}&q=${encodeURIComponent($('archQ').value)}&kind=${archKind}&page=${archPage}`)
   if (req !== archReq) return  // a newer search was started; drop this answer
   if (r.error) return ($('archBody').innerHTML = `<p class="err">${esc(r.error)}</p>`)
   const cards = r.map(d => `<div class="card" data-id="${esc(d.id)}" data-title="${esc(String(d.title))}">` +
-    `<img loading="lazy" src="https://archive.org/services/img/${encodeURIComponent(d.id)}" alt="">` +
+    `<img loading="lazy" src="${esc(d.thumb || '')}" alt="">` +
     `<div class="meta"><span class="tag">${d.video ? 'VIDEO' : 'AUDIO'}${d.year ? ' · ' + esc(String(d.year)) : ''}</span>` +
     `<div>${esc(String(d.title))}</div></div></div>`).join('')
   if (more) $('archCards').insertAdjacentHTML('beforeend', cards)
@@ -470,26 +510,79 @@ $('archBody').onclick = async e => {
   if (t.id === 'archBack') return ($('archBody').innerHTML = archSaved)
   if (t.dataset.url) {
     t.disabled = true; t.textContent = 'Adding…'
-    const r = await fetch('/api/add', { method: 'POST', body: JSON.stringify({ src: t.dataset.url }) }).then(r => r.json())
-      .catch(() => ({ error: 'the Signal Hunter server is not reachable' }))
+    const r = await post('/api/add', { src: t.dataset.url })
     if (r.error) { t.disabled = false; t.textContent = 'Add'; return localError(t.dataset.url, r.error) }
     t.textContent = 'Added ✓'; startPolling(); return
   }
   const card = t.closest('.card'); if (!card) return
   archSaved = $('archBody').innerHTML
-  const id = card.dataset.id
   $('archBody').innerHTML = '<p class="dim">Loading files…</p>'
-  const files = await getJSON(`/api/archive/files?id=${encodeURIComponent(id)}`)
+  const r = await getJSON(`/api/free/files?src=${archSrcId}&id=${encodeURIComponent(card.dataset.id)}`), files = r.files || []
   const head = `<p><button id="archBack">◀ Back</button> <b>${esc(card.dataset.title)}</b> ` +
-    `<a class="dim" href="https://archive.org/details/${encodeURIComponent(id)}" target="_blank">open on archive.org</a></p>`
-  $('archBody').innerHTML = head + (files.error ? `<p class="err">${esc(files.error)}</p>`
+    (r.page ? `<a class="dim" href="${esc(r.page)}" target="_blank">open on ${esc(provider().name)}</a>` : '') + '</p>'
+  $('archBody').innerHTML = head + (r.error ? `<p class="err">${esc(r.error)}</p>`
     : !files.length ? '<p class="dim">No audio or video files in this item.</p>'
     : `<p class="dim">${files.length} file${files.length === 1 ? '' : 's'}. Added files download and transcribe in the background; watch the imports list.</p>` +
       `<div class="files">${files.map(f => `<div class="f"><span class="tag">${f.video ? 'VIDEO' : 'AUDIO'}</span>` +
         `<span>${esc(f.name)}</span><span class="dim">${mb(f.size)}</span><button data-url="${esc(f.url)}">Add</button></div>`).join('')}</div>`)
 }
 
-await loadLibrary(); refreshExports(); startPolling()
+// ---- settings: the server keeps them in <data>/settings.json
+let S = { providers: [], sources: {} }
+const sep = () => S.dataDir?.includes('\\') ? '\\' : '/'
+const applyScale = v => {  // CSS zoom on the whole page; Chromium 128+ (Live 12 ships 135) keeps mouse positions right
+  v = Math.min(1.6, Math.max(0.8, Math.round(v * 10) / 10))
+  document.documentElement.style.zoom = v; $('uiScale').value = v; $('uiScaleV').textContent = `${Math.round(v * 100)}%`
+  return v
+}
+async function loadSettings() {
+  const r = await getJSON('/api/settings'); if (r.error) return
+  S = r; applyScale(S.uiScale); $('expDir').textContent = S.exportDir; renderSources()
+}
+async function saveSettings(patch) {
+  const r = await post('/api/settings', patch)
+  if (!r.error) { Object.assign(S, r); $('expDir').textContent = S.exportDir }
+  return r
+}
+async function setExportDir(dir) {
+  const r = await saveSettings({ exportDir: dir.trim() })
+  $('expMsg').innerHTML = r.error ? `<span class="err">${esc(r.error)}</span>` : 'Saved. New exports go here.'
+  $('expPath').value = S.exportDir; refreshExports()
+}
+$('setBtn').onclick = () => {
+  $('settings').hidden = false
+  $('setFile').textContent = `saved in ${S.dataDir}${sep()}settings.json`
+  $('expPath').value = S.exportDir; $('expMsg').textContent = ''
+  $('libPath').textContent = `${S.dataDir}${sep()}library`
+  $('srcList').innerHTML = S.providers.map(p => `<label class="src"><input type="checkbox" data-src="${p.id}"${S.sources[p.id] ? ' checked' : ''}>` +
+    `<div><b>${esc(p.name)}</b><br><span>${esc(p.blurb)}</span></div></label>`).join('')
+}
+$('setClose').onclick = () => { $('settings').hidden = true }
+$('settings').onclick = e => { if (e.target.id === 'settings') $('settings').hidden = true }
+$('expPath').addEventListener('keydown', e => { if (e.key === 'Enter') setExportDir($('expPath').value) })
+$('expPath').addEventListener('change', () => setExportDir($('expPath').value))
+$('expChoose').onclick = async () => {
+  $('expMsg').textContent = 'Pick a folder in the window that opened…'
+  const r = await post('/api/choose-folder')
+  if (r.path) setExportDir(r.path); else $('expMsg').textContent = ''
+}
+$('expOpen').onclick = $('openExp').onclick = () => post('/api/open-folder', { which: 'exports' })
+$('libOpen').onclick = () => post('/api/open-folder', { which: 'library' })
+$('srcList').onchange = async e => {
+  const c = e.target.closest('[data-src]'); if (!c) return
+  await saveSettings({ sources: { [c.dataset.src]: c.checked } }); renderSources()
+}
+$('uiScale').oninput = e => applyScale(+e.target.value)
+$('uiScale').onchange = e => saveSettings({ uiScale: applyScale(+e.target.value) })
+document.addEventListener('keydown', e => {  // Ctrl/⌘ +, −, 0: interface size
+  if (!(e.ctrlKey || e.metaKey)) return
+  const d = { '=': 0.1, '+': 0.1, '-': -0.1, '_': -0.1 }[e.key]
+  if (d == null && e.key !== '0') return
+  e.preventDefault()
+  saveSettings({ uiScale: applyScale(e.key === '0' ? 1 : +$('uiScale').value + d) })
+})
+
+await loadSettings(); await loadLibrary(); refreshExports(); startPolling()
 </script>
 </body>
 </html>

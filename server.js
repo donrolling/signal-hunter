@@ -19,12 +19,12 @@ let Max = null
 try { Max = require('max-api') } catch {}  // only there inside node.script
 
 const DATA = process.env.SIGNAL_HUNTER_DATA || path.join(os.homedir(), 'Documents', 'Signal Hunter')
-const LIB = path.join(DATA, 'library'), EXP = path.join(DATA, 'exports')
+const LIB = path.join(DATA, 'library'), SETTINGS = path.join(DATA, 'settings.json')
 // the ~250 MB speech model goes in a cache folder, not Documents (which is often synced to the cloud)
 const MODELS = path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), process.platform === 'darwin' ? 'Library/Caches' : '.cache'),
   'Signal Hunter', 'models')
 const VIDEO_EXT = new Set(['.mp4', '.mkv', '.webm', '.mov', '.ogv', '.avi', '.mpeg', '.mpg'])
-const MEDIA_EXT = new Set(['.mp3', '.wav', '.flac', '.ogg', '.m4a', ...VIDEO_EXT])
+const MEDIA_EXT = new Set(['.mp3', '.wav', '.flac', '.ogg', '.oga', '.opus', '.m4a', ...VIDEO_EXT])
 const ext = f => path.extname(f).toLowerCase()
 const stem = f => path.basename(f, path.extname(f))
 const slug = s => s.replace(/[^\w-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) || 'clip'
@@ -56,9 +56,11 @@ function ffmpeg(args) {  // -> Buffer of stdout; rejects with ffmpeg's stderr
 // preferred copy when an item has the same recording in several formats
 const ARCHIVE_PREF = ['.mp4', '.webm', '.mkv', '.mov', '.ogv', '.avi', '.mpeg', '.mpg', '.mp3', '.flac', '.m4a', '.ogg', '.wav']
 
+// Wikimedia asks API clients to say who they are
+const UA = { 'User-Agent': 'SignalHunter/0.2 (+https://github.com/donrolling/signal-hunter)' }
 async function getJSON(url) {
-  const r = await fetch(url)
-  if (!r.ok) throw new Oops(`archive.org said ${r.status}`)
+  const r = await fetch(url, { headers: UA })
+  if (!r.ok) throw new Oops(`${new URL(url).hostname} said ${r.status}`)
   return r.json()
 }
 
@@ -94,8 +96,93 @@ async function archiveSearch(q, kind, page) {
   const p = new URLSearchParams([['q', `${match}mediatype:${types}`], ['fl[]', 'identifier'], ['fl[]', 'title'],
     ['fl[]', 'mediatype'], ['fl[]', 'year'], ['sort[]', 'downloads desc'], ['rows', '30'], ['page', String(page)], ['output', 'json']])
   const r = await getJSON('https://archive.org/advancedsearch.php?' + p)
-  return r.response.docs.map(d => ({ id: d.identifier, title: d.title || d.identifier, year: d.year || '', video: d.mediatype === 'movies' }))
+  return r.response.docs.map(d => ({ id: d.identifier, title: d.title || d.identifier, year: d.year || '', video: d.mediatype === 'movies',
+    thumb: `https://archive.org/services/img/${encodeURIComponent(d.identifier)}` }))
 }
+
+// Wikimedia Commons: one file per result
+const commonsQuery = params => getJSON('https://commons.wikimedia.org/w/api.php?' + new URLSearchParams({
+  action: 'query', format: 'json', prop: 'imageinfo', iiprop: 'url|size|mime', iiurlwidth: '320', ...params }))
+const commonsItem = pg => {
+  const i = pg.imageinfo?.[0] || {}
+  return { id: pg.title, title: pg.title.replace(/^File:/, '').replace(/\.[^.]+$/, ''), year: '', video: /^video|ogg/.test(i.mime || ''),
+    thumb: i.thumburl || '', url: i.url?.split('?')[0], size: Math.max(0, i.size || 0) }
+}
+async function commonsSearch(q, kind, page) {
+  const types = kind ? [kind] : ['video', 'audio']
+  const out = []
+  for (const t of types) {
+    const r = await commonsQuery({ generator: 'search', gsrnamespace: '6', gsrsearch: `${q} filetype:${t}`,
+      gsrlimit: String(30 / types.length), gsroffset: String((page - 1) * 30 / types.length) })
+    out.push(...Object.values(r.query?.pages || {}).sort((a, b) => a.index - b.index).map(commonsItem))
+  }
+  return out.map(({ url, size, ...d }) => d)
+}
+async function commonsFiles(title) {
+  const pg = Object.values((await commonsQuery({ titles: title })).query?.pages || {})[0]
+  const d = pg && commonsItem(pg)
+  return d?.url ? [{ name: path.basename(decodeURIComponent(d.url)), url: d.url, size: d.size, video: d.video }] : []
+}
+
+// NASA Image and Video Library (public domain)
+async function nasaSearch(q, kind, page) {
+  const r = await getJSON('https://images-api.nasa.gov/search?' + new URLSearchParams({ q, media_type: kind === 'audio' ? 'audio' : kind === 'video' ? 'video' : 'video,audio', page: String(page), page_size: '30' }))
+  return r.collection.items.map(i => ({ id: i.data[0].nasa_id, title: i.data[0].title, year: (i.data[0].date_created || '').slice(0, 4),
+    video: i.data[0].media_type === 'video', thumb: (i.links || []).find(l => l.render === 'image')?.href || '' }))
+}
+async function nasaFiles(id) {
+  const r = await getJSON(`https://images-api.nasa.gov/asset/${encodeURIComponent(id)}`)
+  const order = ['orig', 'large', 'medium', 'small', 'mobile']  // NASA's renditions, biggest first; skip previews
+  return r.collection.items.map(x => x.href.replace(/^http:/, 'https:'))
+    .filter(u => MEDIA_EXT.has(ext(u)) && !/~preview\./.test(u))
+    .map(u => ({ url: encodeURI(u), name: decodeURIComponent(path.basename(u)), size: 0, video: VIDEO_EXT.has(ext(u)),
+      rank: order.findIndex(o => u.includes(`~${o}.`)) >>> 0 }))
+    .sort((a, b) => a.rank - b.rank).map(({ rank, ...f }) => f)
+}
+
+const PROVIDERS = {
+  archive: { name: 'archive.org', blurb: 'Public-domain radio, films, newsreels, cartoons and more.', search: archiveSearch, files: archiveMedia },
+  commons: { name: 'Wikimedia Commons', blurb: 'Freely licensed audio and video. Some files ask for credit: check the license on the file page.', search: commonsSearch, files: commonsFiles,
+    page: id => `https://commons.wikimedia.org/wiki/${encodeURIComponent(id)}` },
+  nasa: { name: 'NASA', blurb: 'Launches, mission audio, documentaries and space footage, all public domain.', search: nasaSearch, files: nasaFiles,
+    page: id => `https://images.nasa.gov/details/${encodeURIComponent(id)}` },
+}
+PROVIDERS.archive.page = id => `https://archive.org/details/${encodeURIComponent(id)}`
+
+// ---------- settings (Documents/Signal Hunter/settings.json) ----------
+
+const DEFAULTS = { exportDir: path.join(DATA, 'exports'), sources: { archive: true, commons: true, nasa: true }, uiScale: 1 }
+function settings() {
+  let saved = {}
+  try { saved = json(SETTINGS) } catch {}
+  return { ...DEFAULTS, ...saved, sources: { ...DEFAULTS.sources, ...saved.sources } }
+}
+function saveSettings(patch) {
+  const next = { ...settings(), ...patch }
+  if (patch.sources) next.sources = { ...settings().sources, ...patch.sources }
+  if (patch.exportDir != null) {
+    if (!path.isAbsolute(patch.exportDir)) throw new Oops('export folder must be a full path, like C:\\Clips or /Users/you/Clips')
+    fs.mkdirSync(patch.exportDir, { recursive: true })
+  }
+  fs.writeFileSync(SETTINGS, JSON.stringify(next, null, 1))
+  return next
+}
+const EXP = () => { const d = settings().exportDir; fs.mkdirSync(d, { recursive: true }); return d }
+
+function chooseFolder() {  // the OS's own folder picker; resolves '' if cancelled
+  const run = (cmd, args) => new Promise(ok => {
+    const c = spawn(cmd, args), out = []
+    c.stdout.on('data', d => out.push(d)); c.on('close', () => ok(Buffer.concat(out).toString().trim())); c.on('error', () => ok(''))
+  })
+  if (process.platform === 'win32')  // TopMost owner so the dialog opens in front of Live
+    return run('powershell', ['-NoProfile', '-STA', '-Command', "Add-Type -AssemblyName System.Windows.Forms; " +
+      "$f = New-Object System.Windows.Forms.FolderBrowserDialog; $f.Description = 'Export clips to'; $f.ShowNewFolderButton = $true; " +
+      "$o = New-Object System.Windows.Forms.Form -Property @{TopMost = $true}; if ($f.ShowDialog($o) -eq 'OK') { $f.SelectedPath }"])
+  if (process.platform === 'darwin')
+    return run('osascript', ['-e', 'POSIX path of (choose folder with prompt "Export clips to")'])
+  return run('zenity', ['--file-selection', '--directory'])
+}
+const openFolder = d => spawn(process.platform === 'win32' ? 'explorer' : process.platform === 'darwin' ? 'open' : 'xdg-open', [d], { detached: true, stdio: 'ignore' }).unref()
 
 // ---------- ingest ----------
 
@@ -238,13 +325,16 @@ async function handle(req, res) {
           '-c:a', 'libopus', '-b:a', '128k', '-ac', '2', '-ar', '48000', '-f', 'webm', '-']), 'video/webm')
       return send(res, await ffmpeg([...decode(p, start, dur, 44100), '-f', 'wav', '-']), 'audio/wav')
     }
-    if (u.pathname === '/api/exports') return send(res, fs.readdirSync(EXP).filter(f => ['.wav', '.mp4'].includes(ext(f))).sort())
+    if (u.pathname === '/api/exports') return send(res, fs.readdirSync(EXP()).filter(f => ['.wav', '.mp4'].includes(ext(f))).sort())
+    if (u.pathname === '/api/settings')
+      return send(res, { ...settings(), dataDir: DATA, providers: Object.entries(PROVIDERS).map(([id, p]) => ({ id, name: p.name, blurb: p.blurb })) })
     if (u.pathname === '/api/jobs') return send(res, JOBS.slice(-20))
-    try {  // optional archive.org browser
-      if (u.pathname === '/api/archive/search') return send(res, await archiveSearch(q.q || '', q.kind || '', +q.page || 1))
-      if (u.pathname === '/api/archive/files') return send(res, await archiveMedia(q.id || ''))
+    const prov = PROVIDERS[q.src]
+    try {  // optional free-source browser
+      if (prov && u.pathname === '/api/free/search') return send(res, await prov.search(q.q || '', q.kind || '', +q.page || 1))
+      if (prov && u.pathname === '/api/free/files') return send(res, { page: prov.page(q.id || ''), files: await prov.files(q.id || '') })
     } catch (e) {
-      return fail(res, e instanceof Oops ? e.message : `couldn't reach archive.org: ${e.message}`, 502)
+      return fail(res, e instanceof Oops ? e.message : `couldn't reach ${prov.name}: ${e.message}`, 502)
     }
     return fail(res, 'not found', 404)
   }
@@ -264,13 +354,19 @@ async function handle(req, res) {
     const label = src.replace(/[\\/]+$/, '').split(/[\\/]/).pop() + (match ? ` (${match})` : '')
     return send(res, enqueue(label, say => fetchSrc(src, match, say)))
   }
+  if (u.pathname === '/api/settings') {
+    try { return send(res, saveSettings(d)) } catch (e) { return fail(res, e instanceof Oops ? e.message : `can't use that folder: ${e.message}`) }
+  }
+  if (u.pathname === '/api/choose-folder') return send(res, { path: await chooseFolder() })
+  if (u.pathname === '/api/open-folder') { openFolder(d.which === 'library' ? LIB : EXP()); return send(res, { ok: true }) }
   if (u.pathname !== '/api/export') return fail(res, 'not found', 404)
   const p = source(d.ep || ''); if (!p) return fail(res, 'unknown source', 404)
   const start = +d.start, end = +d.end
   if (!(start >= 0 && start < end && end - start <= 300)) return fail(res, 'bad range')
   const video = d.format === 'mp4' && VIDEO_EXT.has(ext(p)), x = video ? '.mp4' : '.wav', name = slug(d.name || '')
-  let dst = path.join(EXP, name + x)
-  for (let n = 2; fs.existsSync(dst); n++) dst = path.join(EXP, `${name}_${n}${x}`)
+  const exp = EXP()
+  let dst = path.join(exp, name + x)
+  for (let n = 2; fs.existsSync(dst); n++) dst = path.join(exp, `${name}_${n}${x}`)
   const fade = Math.min(0.01, (end - start) / 4)
   const sound = !(video && d.sound === false)  // MP4s can leave the soundtrack out
   const afade = sound ? ['-af', `afade=t=in:d=${fade},afade=t=out:st=${(end - start - fade).toFixed(3)}:d=${fade}`] : ['-an']
@@ -291,7 +387,7 @@ function status() {  // shown on the Live device's panel; only on change, so "Se
 }
 
 const port = +(process.argv[process.argv.indexOf('--port') + 1] || 0) || 8765
-for (const d of [LIB, EXP]) fs.mkdirSync(d, { recursive: true })
+fs.mkdirSync(LIB, { recursive: true })
 http.createServer((req, res) => handle(req, res).catch(e => fail(res, e.message, 500)))
   .on('error', e => {
     if (e.code !== 'EADDRINUSE') throw e

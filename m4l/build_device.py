@@ -81,7 +81,12 @@ boxes = [
     button("open", "", [12, 58, 276, 30], [300, 60, 120, 22], ACCENT, INK, 12.0),
     label("hint", "Pick an empty clip slot, then Send to Live (S) in the window.", [12, 92, 280, 18], DIM),
     label("warp-l", "Sent clips:", [12, 116, 70, 18], DIM, rect=[660, 100, 80, 20]),
-    button("warp", "Warp off", [76, 114, 120, 20], [660, 130, 100, 22], RAISE, TEXT, 9.5, 0),
+    # live.text is a Live parameter, so its state is saved with the Live set (and restored, which re-outputs it)
+    box("warp", "live.text", [660, 130, 100, 20], 1, 2, pres=[76, 114, 120, 20], outlettype=["", ""],
+        mode=1, text="Warp off", texton="Warp: Complex Pro", varname="Warp", parameter_enable=1,
+        saved_attribute_attributes={"valueof": {"parameter_longname": "Warp", "parameter_shortname": "Warp",
+                                                "parameter_type": 2, "parameter_mmax": 1, "parameter_enum": ["off", "on"],
+                                                "parameter_initial_enable": 1, "parameter_initial": [0]}}),
     button("reload", "Reload", [12, 142, 64, 20], [460, 100, 60, 22], RAISE, TEXT, 9.5, 0),
     label("status", "Starting…", [84, 143, 210, 18], DIM, rect=[300, 420, 260, 20]),
 
@@ -112,14 +117,7 @@ boxes = [
     box("sent", "newobj", [520, 380, 110, 22], 1, 1, "prepend Sent"),
     box("setstat", "newobj", [300, 390, 80, 22], 1, 1, "prepend set"),
 
-    # Warp toggle: click flips a hidden toggle; [i] holds the state; the label and colour follow it
-    box("warp-b", "newobj", [660, 160, 30, 22], 1, 1, "t b"),
-    box("warp-tg", "toggle", [660, 190, 20, 20], 1, 1, outlettype=["int"]),
-    box("warp-ti", "newobj", [660, 220, 40, 22], 1, 2, "t i i"),
-    box("warp-sel", "newobj", [700, 250, 60, 22], 2, 3, "sel 0 1"),
-    box("warp-off", "message", [700, 280, 220, 22], 2, 1, 'text "Warp off", bgcolor 0.13 0.145 0.176 1'),
-    box("warp-on", "message", [700, 310, 260, 22], 2, 1, 'text "Warp: Complex Pro", bgcolor 0.36 0.26 0.09 1'),
-    box("warp-i", "newobj", [660, 360, 30, 22], 2, 1, "i"),
+    box("warp-i", "newobj", [660, 360, 30, 22], 2, 1, "i"),  # holds the Warp state (0 off, 1 Complex Pro)
     # after the clip exists: point a second live.object at it, then set warping (and Complex Pro = warp_mode 6)
     box("after-t", "newobj", [560, 400, 40, 22], 1, 2, "t b b"),
     box("goto2", "message", [600, 430, 250, 22], 2, 1, "goto live_set view highlighted_clip_slot clip"),
@@ -145,12 +143,10 @@ lines = [
     line("after-t", 0, "warp-i", 0), line("warp-i", 0, "wsel", 0),
     line("wsel", 0, "wm-off", 0), line("wsel", 1, "wm-on", 0),
     line("wm-off", 0, "obj2", 0), line("wm-on", 0, "obj2", 0),
-    line("warp", 0, "warp-b", 0), line("warp-b", 0, "warp-tg", 0), line("warp-tg", 0, "warp-ti", 0),
-    line("warp-ti", 1, "warp-i", 1), line("warp-ti", 0, "warp-sel", 0),
-    line("warp-sel", 0, "warp-off", 0), line("warp-sel", 1, "warp-on", 0),
-    line("warp-off", 0, "warp", 0), line("warp-on", 0, "warp", 0),
+    line("warp", 0, "warp-i", 1),
 ]
 device = {"patcher": patcher([100, 100, 760, 520], boxes, lines, openinpresentation=1, devicewidth=300.0,
+                             parameters={"warp": ["Warp", "Warp", 0], "inherited_shortname": 1},
                              description="Search audio and video by what's said; send clips to Live.")}
 
 body = json.dumps(device, ensure_ascii=False).encode()

@@ -199,6 +199,17 @@ async function work() {
 
 // ---------- server ----------
 
+const durations = new Map()  // path|mtime -> seconds, read from ffmpeg's header dump
+async function duration(p) {
+  const key = p + '|' + fs.statSync(p).mtimeMs
+  if (!durations.has(key)) {
+    const err = await new Promise(ok => { const e = []; const c = spawn(FFMPEG, ['-hide_banner', ...srcArgs(p)]); c.stderr.on('data', d => e.push(d)); c.on('close', () => ok(Buffer.concat(e).toString())); c.on('error', () => ok('')) })
+    const m = err.match(/Duration: (\d+):(\d+):([\d.]+)/)
+    durations.set(key, m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 0)
+  }
+  return durations.get(key)
+}
+
 const sources = () => fs.readdirSync(LIB).filter(f => MEDIA_EXT.has(ext(f)) && fs.existsSync(jsonOf(path.join(LIB, f)))).sort()
 const source = name => sources().includes(name) ? path.join(LIB, name) : null  // whitelist: no path traversal
 
@@ -215,15 +226,16 @@ async function handle(req, res) {
   if (req.method === 'GET') {
     if (u.pathname === '/') return send(res, fs.readFileSync(path.join(__dirname, 'index.html')), 'text/html; charset=utf-8')
     if (u.pathname === '/api/library')
-      return send(res, sources().map(n => ({ name: n, video: VIDEO_EXT.has(ext(n)), segments: json(jsonOf(path.join(LIB, n))) })))
-    if (u.pathname === '/api/clip') {  // small preview window: wav for audio, low-res mp4 for video
+      return send(res, await Promise.all(sources().map(async n => ({ name: n, video: VIDEO_EXT.has(ext(n)),
+        duration: await duration(path.join(LIB, n)), segments: json(jsonOf(path.join(LIB, n))) }))))
+    if (u.pathname === '/api/clip') {  // small preview window: wav for audio, low-res WebM for video
       const p = source(q.ep || ''); if (!p) return fail(res, 'unknown source', 404)
       const start = Math.max(0, +q.start), dur = Math.min(+q.end - start, 120)
       if (VIDEO_EXT.has(ext(p)))
+        // WebM (VP8 + Opus), not MP4: Live's built-in browser (Max's jweb) lacks the H.264/AAC decoders
         return send(res, await ffmpeg(['-v', 'error', ...srcArgs(p, start, dur), '-vf', 'scale=-2:360',
-          '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-pix_fmt', 'yuv420p',
-          '-c:a', 'aac', '-ac', '2', '-ar', '44100', '-b:a', '160k',
-          '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-f', 'mp4', '-']), 'video/mp4')
+          '-c:v', 'libvpx', '-deadline', 'realtime', '-cpu-used', '8', '-b:v', '900k',
+          '-c:a', 'libopus', '-b:a', '128k', '-ac', '2', '-ar', '48000', '-f', 'webm', '-']), 'video/webm')
       return send(res, await ffmpeg([...decode(p, start, dur, 44100), '-f', 'wav', '-']), 'audio/wav')
     }
     if (u.pathname === '/api/exports') return send(res, fs.readdirSync(EXP).filter(f => ['.wav', '.mp4'].includes(ext(f))).sort())
@@ -260,9 +272,11 @@ async function handle(req, res) {
   let dst = path.join(EXP, name + x)
   for (let n = 2; fs.existsSync(dst); n++) dst = path.join(EXP, `${name}_${n}${x}`)
   const fade = Math.min(0.01, (end - start) / 4)
-  const afade = ['-af', `afade=t=in:d=${fade},afade=t=out:st=${(end - start - fade).toFixed(3)}:d=${fade}`]
+  const sound = !(video && d.sound === false)  // MP4s can leave the soundtrack out
+  const afade = sound ? ['-af', `afade=t=in:d=${fade},afade=t=out:st=${(end - start - fade).toFixed(3)}:d=${fade}`] : ['-an']
   // video re-encodes so the cut is frame-accurate (a stream copy would snap to keyframes)
-  const codec = video ? ['-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '256k', '-movflags', '+faststart']
+  const codec = video ? ['-c:v', 'libx264', '-crf', '18', '-preset', 'medium', '-pix_fmt', 'yuv420p',
+    ...(sound ? ['-c:a', 'aac', '-b:a', '256k'] : []), '-movflags', '+faststart']
     : ['-vn', '-c:a', 'pcm_s24le']
   await ffmpeg(['-v', 'error', ...srcArgs(p, start, end - start), ...afade, ...codec, dst])
   send(res, { file: path.basename(dst), path: dst })
@@ -287,6 +301,12 @@ http.createServer((req, res) => handle(req, res).catch(e => fail(res, e.message,
   })
   .listen(port, '127.0.0.1', () => {
     console.log(`Signal Hunter: http://localhost:${port}  (data: ${DATA})`)
+    // finish imports cut short last time (Live closed, device removed): files without a transcript yet
+    for (const f of fs.readdirSync(LIB)) {
+      const p = path.join(LIB, f)
+      if (f.endsWith('.part')) fs.rmSync(p, { force: true })
+      else if (MEDIA_EXT.has(ext(f)) && !fs.existsSync(jsonOf(p))) enqueue(f, async () => [p])
+    }
     status()
   })
 setInterval(status, 2000).unref()

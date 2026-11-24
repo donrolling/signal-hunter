@@ -159,6 +159,7 @@
       <input id="name" placeholder="clip name">
       <button id="export" class="primary">Export WAV <kbd>E</kbd></button>
       <button id="exportMp4" hidden>Export MP4 <kbd>M</kbd></button>
+      <button id="mp4Sound" class="on" hidden title="Whether MP4 exports include the soundtrack">With sound</button>
       <button id="toLive" class="primary" hidden>Send to Live <kbd>S</kbd></button>
     </div>
     <div class="row" id="status"></div>
@@ -176,7 +177,8 @@ const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&
 const slug = s => s.toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '').slice(0, 50)
 
 let segs = [], cur = null, region = null, loop = false, epFilter = ''
-const isVideo = {}
+const isVideo = {}, durs = {}
+const hasSpeech = ep => segs.some(s => s.ep === ep)
 const REGION_COLOR = 'rgba(240,180,76,.22)'
 
 const regions = Regions.create()
@@ -215,7 +217,9 @@ function showSel() {
 async function load(ep, start, end, selA, selB) {
   start = Math.max(0, start)
   cur = { ep, start, end }
-  $('video').hidden = $('exportMp4').hidden = !isVideo[ep]
+  // video sources: MP4 is the main export (with or without sound); WAV still there for the audio alone
+  $('video').hidden = $('exportMp4').hidden = $('mp4Sound').hidden = !isVideo[ep]
+  $('exportMp4').classList.toggle('primary', !!isVideo[ep]); $('export').classList.toggle('primary', !isVideo[ep])
   $('info').textContent = `${ep} · window ${fmt(start)}–${fmt(end)}`
   await ws.load(`/api/clip?ep=${encodeURIComponent(ep)}&start=${start}&end=${end}`)
   ws.zoom(+$('zoom').value)
@@ -229,6 +233,14 @@ async function load(ep, start, end, selA, selB) {
 
 function render() {
   const q = $('q').value.trim().toLowerCase(), ep = epFilter
+  if (ep && !q && !hasSpeech(ep)) {  // music, silent film, ...: nothing to search, so browse it in 30 s steps
+    $('count').textContent = 'no speech found · browse by time'
+    const rows = []
+    for (let t = 0; t < (durs[ep] || 0); t += 30)
+      rows.push(`<div class="seg" data-t="${t}"><span class="t">${fmt(t)}</span><span class="dim">to ${fmt(Math.min(t + 30, durs[ep]))}</span></div>`)
+    $('results').innerHTML = rows.join('') || '<p class="dim" style="padding:16px">Nothing to show.</p>'
+    return
+  }
   const hits = segs.filter(s => (!ep || s.ep === ep) && (!q || s.text.toLowerCase().includes(q)))
   $('count').textContent = q ? `${hits.length} match${hits.length === 1 ? '' : 'es'}` : `all ${hits.length} transcript lines`
   const re = q && new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
@@ -241,6 +253,11 @@ function render() {
 $('results').onclick = e => {
   const row = e.target.closest('.seg'); if (!row) return
   document.querySelectorAll('.seg.sel').forEach(r => r.classList.remove('sel')); row.classList.add('sel')
+  if (row.dataset.t != null) {  // time row of a source without speech
+    const t = +row.dataset.t
+    $('name').value = slug(epFilter.replace(/\.[^.]+$/, '').slice(0, 30) + '-' + Math.round(t))
+    return load(epFilter, t, Math.min(t + 30, durs[epFilter] || t + 30))
+  }
   const s = segs[+row.dataset.i]
   $('name').value = slug(s.text.split(' ').slice(0, 6).join(' '))
   load(s.ep, s.start - 5, s.end + 15, s.start, s.end)
@@ -279,7 +296,7 @@ async function doExport(format = 'wav', toLive = false) {
   if (!cur || !region) return ($('status').textContent = 'Select a region first.')
   if (format === 'mp4' && !isVideo[cur.ep]) return
   $('status').textContent = `Exporting ${format.toUpperCase()}…`
-  const body = { ep: cur.ep, start: cur.start + region.start, end: cur.start + region.end, name: $('name').value || 'clip', format }
+  const body = { ep: cur.ep, start: cur.start + region.start, end: cur.start + region.end, name: $('name').value || 'clip', format, sound: $('mp4Sound').classList.contains('on') }
   const r = await fetch('/api/export', { method: 'POST', body: JSON.stringify(body) }).then(r => r.json())
   if (!r.error && toLive) {
     if (!window.max?.outlet) return ($('status').textContent = `Saved ${r.path}, but Max isn't reachable: open this from the Live device`)
@@ -293,6 +310,7 @@ async function doExport(format = 'wav', toLive = false) {
 }
 $('export').onclick = () => doExport('wav')
 $('exportMp4').onclick = () => doExport('mp4')
+$('mp4Sound').onclick = () => { const on = $('mp4Sound').classList.toggle('on'); $('mp4Sound').textContent = on ? 'With sound' : 'Silent' }
 $('toLive').onclick = () => doExport('wav', true)
 
 async function refreshExports() {
@@ -313,7 +331,7 @@ $('name').addEventListener('keydown', e => { if (e.key === 'Enter') doExport(cur
 $('q').oninput = render
 function renderEpList() {
   $('epList').innerHTML = ['', ...Object.keys(isVideo)].map(n =>
-    `<div class="opt${n === epFilter ? ' on' : ''}" data-ep="${esc(n)}">${n ? esc(n) : 'All sources'}</div>`).join('')
+    `<div class="opt${n === epFilter ? ' on' : ''}" data-ep="${esc(n)}">${n ? esc(n) + (hasSpeech(n) ? '' : ' <span class="dim">· no speech</span>') : 'All sources'}</div>`).join('')
 }
 $('epBtn').onclick = e => { e.stopPropagation(); renderEpList(); $('epList').hidden = !$('epList').hidden }
 $('epList').onclick = e => {
@@ -330,7 +348,7 @@ async function loadLibrary() {
   segs = []
   for (const k in isVideo) delete isVideo[k]
   lib.forEach(e => {
-    isVideo[e.name] = e.video
+    isVideo[e.name] = e.video; durs[e.name] = e.duration
     e.segments.forEach(s => segs.push({ ...s, ep: e.name, i: segs.length }))
   })
   render()

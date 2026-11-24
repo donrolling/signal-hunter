@@ -188,11 +188,12 @@ regions.on('region-created', r => { if (region && region !== r) region.remove();
 regions.on('region-updated', showSel)
 // Selection playback stops (or loops) at the region end ourselves. Poll the clock instead of
 // relying on timeupdate events, which Max's jweb doesn't deliver reliably.
-let selEnd = null
+// Reads region.end on every tick, so dragging the selection's edges while it plays takes effect at once.
+let selPlay = false
 setInterval(() => {
-  if (selEnd == null || !ws.isPlaying() || ws.getCurrentTime() < selEnd) return
-  if (loop && region) ws.setTime(region.start)
-  else { ws.pause(); selEnd = null }
+  if (!selPlay || !region || !ws.isPlaying() || ws.getCurrentTime() < region.end) return
+  if (loop) ws.setTime(region.start)
+  else { ws.pause(); selPlay = false }
 }, 15)
 
 function showSel() {
@@ -243,10 +244,11 @@ const shift = d => {
 $('back').onclick = () => shift(-10)
 $('fwd').onclick = () => shift(10)
 $('zoom').oninput = e => ws.getDuration() && ws.zoom(+e.target.value)
-$('playWin').onclick = () => { selEnd = null; ws.playPause() }
+$('playWin').onclick = () => { selPlay = false; ws.playPause() }
 const playSel = () => {
   if (ws.isPlaying()) return ws.pause()
-  if (region) { selEnd = region.end; ws.setTime(region.start) }
+  selPlay = !!region
+  if (region) ws.setTime(region.start)
   ws.play()
 }
 $('playSel').onclick = playSel

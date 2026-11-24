@@ -1,6 +1,6 @@
 {
   "name": "signal-hunter",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Find samples and clips by what's said.",
   "main": "server.js",
   "license": "MIT",

@@ -67,8 +67,9 @@ window = patcher([80, 80, 1200, 760], [
     openinpresentation=1, toolbarvisible=0, statusbarvisible=0, bgcolor=BG, editing_bgcolor=BG)
 
 boxes = [
-    # panel (first box = drawn at the back)
-    box("bg", "panel", [560, 10, 40, 40], 1, 0, pres=[0, 0, 300, 169], bgcolor=BG, border=0, rounded=0, ignoreclick=1),
+    # backdrop: background=1 puts it on Max's background layer, under everything else
+    box("bg", "panel", [560, 10, 40, 40], 1, 0, pres=[0, 0, 300, 169], bgcolor=BG, border=0, rounded=0,
+        ignoreclick=1, background=1),
     box("logo", "jsui", [560, 60, 34, 34], 1, 1, pres=[12, 12, 34, 34], filename="logo.js", border=0, ignoreclick=1),
     label("t1", "SIGNAL", [52, 12, 60, 20], TEXT, 14.0, 1),
     label("t2", "HUNTER", [108, 12, 70, 20], ACCENT, 14.0, 1),

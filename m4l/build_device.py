@@ -74,10 +74,11 @@ boxes = [
     label("t1", "SIGNAL", [52, 12, 60, 20], TEXT, 14.0, 1),
     label("t2", "HUNTER", [108, 12, 70, 20], ACCENT, 14.0, 1),
     label("tag", "Find samples by what's said", [52, 30, 200, 18], DIM),
-    # Live's theme overrides a textbutton's text color, so the label is a comment drawn on top (clicks pass through)
-    button("open", "", [12, 58, 276, 30], [300, 60, 120, 22], ACCENT, INK, 12.0),
+    # Live's theme overrides a textbutton's text color, so the label is a comment drawn on top (clicks pass
+    # through). Max draws earlier boxes on top of later ones, so the label comes before the button.
     box("open-label", "comment", [430, 60, 140, 20], 1, 0, "Open Signal Hunter", pres=[12, 64, 276, 20],
         textcolor=INK, fontsize=12.0, fontface=1, fontname="Arial", textjustification=1, ignoreclick=1),
+    button("open", "", [12, 58, 276, 30], [300, 60, 120, 22], ACCENT, INK, 12.0),
     label("hint", "Pick an empty clip slot, then Send to Live (S) in the window.", [12, 94, 280, 18], DIM),
     button("reload", "Reload", [12, 138, 64, 20], [460, 100, 60, 22], RAISE, TEXT, 9.5, 0),
     label("status", "Starting…", [84, 139, 210, 18], DIM, rect=[300, 420, 260, 20]),

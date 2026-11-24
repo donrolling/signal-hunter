@@ -238,8 +238,10 @@ const ws = WaveSurfer.create({
   cursorColor: '#fff', minPxPerSec: 40, plugins: [regions],
 })
 regions.enableDragSelection({ color: REGION_COLOR })
-regions.on('region-created', r => { if (region && region !== r) region.remove(); region = r; showSel() })
-regions.on('region-updated', showSel)
+// a new or resized selection plays from its start next time, not from wherever playback last paused
+let selMoved = false
+regions.on('region-created', r => { if (region && region !== r) region.remove(); region = r; selMoved = true; showSel() })
+regions.on('region-updated', () => { selMoved = true; showSel() })
 // One Play/Pause button; the Selection/Window toggle says what it plays. We stop (or loop) at the edges
 // ourselves by polling the clock: Max's jweb doesn't deliver timeupdate reliably. Reading region.end on
 // every tick means dragging the selection while it plays takes effect at once.
@@ -332,8 +334,9 @@ $('zoom').oninput = e => ws.getDuration() && ws.zoom(+e.target.value)
 const togglePlay = () => {
   if (ws.isPlaying()) return ws.pause()
   const t = ws.getCurrentTime()
-  if (selMode()) { if (t < region.start || t >= region.end - 0.01) ws.setTime(region.start) }  // else resume where paused
+  if (selMode()) { if (selMoved || t < region.start || t >= region.end - 0.01) ws.setTime(region.start) }  // else resume where paused
   else if (t >= ws.getDuration() - 0.05) ws.setTime(0)
+  selMoved = false
   ws.play()
 }
 $('play').onclick = togglePlay

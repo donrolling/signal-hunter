@@ -41,7 +41,12 @@
   #epList { position:absolute; right:0; top:calc(100% + 4px); z-index:10; min-width:320px; max-height:60vh; overflow:auto; padding:4px 0;
             background:var(--raise); border:1px solid #000; border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.55); }
   #epList[hidden] { display:none; }
-  .opt { padding:6px 12px; cursor:pointer; white-space:nowrap; }
+  .opt { padding:6px 8px 6px 12px; cursor:pointer; white-space:nowrap; display:flex; align-items:center; gap:10px; }
+  .opt > span:first-child { flex:1; }
+  .opt .del { visibility:hidden; background:none; border:0; box-shadow:none; padding:0 6px; color:var(--dim); }
+  .opt:hover .del { visibility:visible; } .opt .del:hover { color:#e8766b; }
+  .opt.ask { cursor:default; background:#2a2f39; } .opt.ask b { color:#e8766b; }
+  .opt.ask button { padding:3px 10px; font-size:12px; }
   .opt:hover { background:#2a2f39; } .opt.on { color:var(--accent); }
   main { flex:1; display:grid; grid-template-columns:minmax(280px, 40%) 1fr; min-height:0; }
   #results { overflow:auto; border-right:1px solid #000; box-shadow:1px 0 0 rgba(255,255,255,.03); }
@@ -358,11 +363,30 @@ $('name').addEventListener('keydown', e => { if (e.key === 'Enter') doExport(cur
 $('q').oninput = render
 function renderEpList() {
   $('epList').innerHTML = ['', ...Object.keys(isVideo)].map(n =>
-    `<div class="opt${n === epFilter ? ' on' : ''}" data-ep="${esc(n)}">${n ? esc(n) + (hasSpeech(n) ? '' : ' <span class="dim">· no speech</span>') : 'All sources'}</div>`).join('')
+    `<div class="opt${n === epFilter ? ' on' : ''}" data-ep="${esc(n)}"><span>${n ? esc(n) + (hasSpeech(n) ? '' : ' <span class="dim">· no speech</span>') : 'All sources'}</span>` +
+    (n ? '<button class="del" data-del title="Delete this source">🗑</button>' : '') + '</div>').join('')
 }
 $('epBtn').onclick = e => { e.stopPropagation(); renderEpList(); $('epList').hidden = !$('epList').hidden }
-$('epList').onclick = e => {
+$('epList').onclick = async e => {
   const o = e.target.closest('.opt'); if (!o) return
+  // delete: ask inline (Live's browser may not show confirm() dialogs)
+  if (e.target.closest('[data-del]')) {
+    e.stopPropagation()
+    o.classList.add('ask')
+    o.innerHTML = `<span>Delete <b>${esc(o.dataset.ep)}</b> and its transcript? Exports stay.</span>` +
+      '<button class="primary" data-yes>Delete</button><button data-no>Keep</button>'
+    return
+  }
+  if (e.target.closest('[data-no]')) { e.stopPropagation(); return renderEpList() }
+  if (e.target.closest('[data-yes]')) {
+    e.stopPropagation()
+    const ep = o.dataset.ep, r = await post('/api/delete', { ep })
+    if (r.error) return localError(ep, r.error)
+    if (epFilter === ep) { epFilter = ''; $('epBtn').textContent = 'All sources ▾' }
+    if (cur?.ep === ep) { ws.empty(); cur = null; region = null; $('video').hidden = true; $('info').textContent = 'Click a line to load it. Drag on the waveform to select.'; showSel() }
+    await loadLibrary(); return renderEpList()
+  }
+  if (o.classList.contains('ask')) return e.stopPropagation()
   epFilter = o.dataset.ep
   $('epBtn').textContent = `${epFilter || 'All sources'} ▾`
   $('epList').hidden = true

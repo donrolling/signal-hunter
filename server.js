@@ -356,6 +356,11 @@ async function handle(req, res) {
   if (u.pathname === '/api/settings') {
     try { return send(res, saveSettings(d)) } catch (e) { return fail(res, e instanceof Oops ? e.message : `can't use that folder: ${e.message}`) }
   }
+  if (u.pathname === '/api/delete') {  // a source and its transcript; exports made from it stay
+    const p = source(d.ep || ''); if (!p) return fail(res, 'unknown source', 404)
+    for (const f of [p, jsonOf(p)]) fs.rmSync(f, { force: true })
+    status(); return send(res, { ok: true })
+  }
   if (u.pathname === '/api/choose-folder') return send(res, { path: await chooseFolder() })
   if (u.pathname === '/api/open-folder') { openFolder(d.which === 'library' ? LIB : EXP()); return send(res, { ok: true }) }
   if (u.pathname !== '/api/export') return fail(res, 'not found', 404)

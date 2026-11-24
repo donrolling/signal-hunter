@@ -79,9 +79,11 @@ boxes = [
     box("open-label", "comment", [430, 60, 140, 20], 1, 0, "Open Signal Hunter", pres=[12, 64, 276, 20],
         textcolor=INK, fontsize=12.0, fontface=1, fontname="Arial", textjustification=1, ignoreclick=1),
     button("open", "", [12, 58, 276, 30], [300, 60, 120, 22], ACCENT, INK, 12.0),
-    label("hint", "Pick an empty clip slot, then Send to Live (S) in the window.", [12, 94, 280, 18], DIM),
-    button("reload", "Reload", [12, 138, 64, 20], [460, 100, 60, 22], RAISE, TEXT, 9.5, 0),
-    label("status", "Starting…", [84, 139, 210, 18], DIM, rect=[300, 420, 260, 20]),
+    label("hint", "Pick an empty clip slot, then Send to Live (S) in the window.", [12, 92, 280, 18], DIM),
+    label("warp-l", "Sent clips:", [12, 116, 70, 18], DIM, rect=[660, 100, 80, 20]),
+    button("warp", "Warp off", [76, 114, 120, 20], [660, 130, 100, 22], RAISE, TEXT, 9.5, 0),
+    button("reload", "Reload", [12, 142, 64, 20], [460, 100, 60, 22], RAISE, TEXT, 9.5, 0),
+    label("status", "Starting…", [84, 143, 210, 18], DIM, rect=[300, 420, 260, 20]),
 
     # audio pass-through so the device can sit on any audio track
     box("plugin", "newobj", [20, 20, 60, 22], 2, 2, "plugin~", outlettype=["signal", "signal"]),
@@ -103,11 +105,29 @@ boxes = [
     box("route", "newobj", [300, 230, 110, 22], 3, 3, "route locate clip"),
     box("goto", "message", [420, 270, 230, 22], 2, 1, "goto live_set view highlighted_clip_slot"),
     box("path", "newobj", [420, 310, 70, 22], 1, 3, "live.path"),
+    box("clip-t", "newobj", [300, 270, 60, 22], 1, 3, "t b l l"),  # right to left: status, create clip, then set warp
     box("prepend", "newobj", [300, 310, 170, 22], 1, 1, "prepend call create_audio_clip"),
     box("obj", "newobj", [300, 350, 80, 22], 2, 1, "live.object"),
     box("strip", "newobj", [520, 350, 60, 22], 1, 2, "strippath"),
     box("sent", "newobj", [520, 380, 110, 22], 1, 1, "prepend Sent"),
     box("setstat", "newobj", [300, 390, 80, 22], 1, 1, "prepend set"),
+
+    # Warp toggle: click flips a hidden toggle; [i] holds the state; the label and colour follow it
+    box("warp-b", "newobj", [660, 160, 30, 22], 1, 1, "t b"),
+    box("warp-tg", "toggle", [660, 190, 20, 20], 1, 1, outlettype=["int"]),
+    box("warp-ti", "newobj", [660, 220, 40, 22], 1, 2, "t i i"),
+    box("warp-sel", "newobj", [700, 250, 60, 22], 2, 3, "sel 0 1"),
+    box("warp-off", "message", [700, 280, 220, 22], 2, 1, 'text "Warp off", bgcolor 0.13 0.145 0.176 1'),
+    box("warp-on", "message", [700, 310, 260, 22], 2, 1, 'text "Warp: Complex Pro", bgcolor 0.36 0.26 0.09 1'),
+    box("warp-i", "newobj", [660, 360, 30, 22], 2, 1, "i"),
+    # after the clip exists: point a second live.object at it, then set warping (and Complex Pro = warp_mode 6)
+    box("after-t", "newobj", [560, 400, 40, 22], 1, 2, "t b b"),
+    box("goto2", "message", [600, 430, 250, 22], 2, 1, "goto live_set view highlighted_clip_slot clip"),
+    box("path2", "newobj", [600, 460, 70, 22], 1, 3, "live.path"),
+    box("wsel", "newobj", [560, 460, 30, 22], 2, 3, "sel 0 1"),
+    box("wm-off", "message", [520, 500, 100, 22], 2, 1, "set warping 0"),
+    box("wm-on", "message", [640, 500, 200, 22], 2, 1, "set warping 1, set warp_mode 6"),
+    box("obj2", "newobj", [560, 540, 80, 22], 2, 1, "live.object"),
 ]
 lines = [
     line("plugin", 0, "plugout", 0), line("plugin", 1, "plugout", 1),
@@ -117,8 +137,18 @@ lines = [
     line("reload", 0, "reload-b", 0), line("reload-b", 0, "reload-m", 0), line("reload-m", 0, "win", 1),
     line("win", 0, "route", 0),
     line("route", 0, "goto", 0), line("goto", 0, "path", 0), line("path", 0, "obj", 1),
-    line("route", 1, "prepend", 0), line("prepend", 0, "obj", 0),
-    line("route", 1, "strip", 0), line("strip", 0, "sent", 0), line("sent", 0, "setstat", 0),
+    line("route", 1, "clip-t", 0),
+    line("clip-t", 2, "strip", 0), line("strip", 0, "sent", 0), line("sent", 0, "setstat", 0),
+    line("clip-t", 1, "prepend", 0), line("prepend", 0, "obj", 0),
+    line("clip-t", 0, "after-t", 0),
+    line("after-t", 1, "goto2", 0), line("goto2", 0, "path2", 0), line("path2", 0, "obj2", 1),
+    line("after-t", 0, "warp-i", 0), line("warp-i", 0, "wsel", 0),
+    line("wsel", 0, "wm-off", 0), line("wsel", 1, "wm-on", 0),
+    line("wm-off", 0, "obj2", 0), line("wm-on", 0, "obj2", 0),
+    line("warp", 0, "warp-b", 0), line("warp-b", 0, "warp-tg", 0), line("warp-tg", 0, "warp-ti", 0),
+    line("warp-ti", 1, "warp-i", 1), line("warp-ti", 0, "warp-sel", 0),
+    line("warp-sel", 0, "warp-off", 0), line("warp-sel", 1, "warp-on", 0),
+    line("warp-off", 0, "warp", 0), line("warp-on", 0, "warp", 0),
 ]
 device = {"patcher": patcher([100, 100, 760, 520], boxes, lines, openinpresentation=1, devicewidth=300.0,
                              description="Search audio and video by what's said; send clips to Live.")}

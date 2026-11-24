@@ -55,13 +55,15 @@ The ⚙ button: the Signal Hunter folder, the export folder (inside it by defaul
 
 ## Without Live
 
-Signal Hunter also runs in your browser, with no Live needed. It needs [Node.js](https://nodejs.org/) 20 or newer.
+Signal Hunter also runs in your browser, with no Live and nothing else to install.
 
 1. Download and unzip the same release zip as above.
-2. In a terminal, go into the `Signal Hunter` folder and run `node server.js`.
-3. Open http://localhost:8765. Leave the terminal open while you work; Ctrl+C stops it.
+2. In the `Signal Hunter` folder, double-click **Start Signal Hunter** (`.cmd` on Windows, `.command` on Mac). Your browser opens on Signal Hunter.
+3. Leave the small window it opens running while you work; close it to stop Signal Hunter.
 
-Everything works except **Send to Live**: export WAVs or MP4s instead. Use `node server.js --port 9000` if 8765 is taken. If the device is running in Live at the same time, the browser page simply shares its server.
+Windows may show a SmartScreen warning the first time: click **More info → Run anyway**. On a Mac, right-click the file and choose **Open** the first time, since it isn't signed by Apple.
+
+Everything works except **Send to Live**: export WAVs or MP4s instead. If the device is running in Live at the same time, the browser page simply shares its server.
 
 From a clone of this repo, `npm install` then `npm start` does the same.
 

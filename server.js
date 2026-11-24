@@ -434,6 +434,8 @@ function status() {  // shown on the Live device's panel; only on change, so "Se
 }
 
 const port = +(process.argv[process.argv.indexOf('--port') + 1] || 0) || 8765
+// the standalone launchers pass --open: show the page in the default browser once the server is up
+const openPage = () => process.argv.includes('--open') && openFolder(`http://localhost:${port}`)
 useData(settings().dataDir)
 http.createServer((req, res) => handle(req, res).catch(e => fail(res, e.message, 500)))
   .on('error', e => {
@@ -441,6 +443,7 @@ http.createServer((req, res) => handle(req, res).catch(e => fail(res, e.message,
     // another Signal Hunter (a second device, or a terminal) already serves this port: the page works either way
     console.log(`port ${port} is already in use; using the server that's running`)
     Max?.outlet('status', 'Ready (shared with another Signal Hunter)')
+    openPage()
   })
   .listen(port, '127.0.0.1', () => {
     console.log(`Signal Hunter: http://localhost:${port}  (data: ${DATA || 'not chosen yet'})`)
@@ -450,6 +453,6 @@ http.createServer((req, res) => handle(req, res).catch(e => fail(res, e.message,
       if (f.endsWith('.part')) fs.rmSync(p, { force: true })
       else if (MEDIA_EXT.has(ext(f)) && !fs.existsSync(jsonOf(p))) enqueue(f, async () => [p])
     }
-    status()
+    status(); openPage()
   })
 setInterval(status, 2000).unref()

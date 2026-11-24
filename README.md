@@ -12,8 +12,10 @@ Needs Live 12 Suite, or Live 12 with Max for Live. Nothing else to install: the 
 
 1. Download `Signal-Hunter-windows.zip` or `Signal-Hunter-mac.zip` from the [latest release](https://github.com/donrolling/signal-hunter/releases/latest) and unzip it. There's no installer: the unzipped `Signal Hunter` folder is the device.
    Put the folder in your Live User Library, so it shows up under **User Library** in Live's browser:
-   - Windows: `Documents\Ableton\User Library\Signal Hunter`
-   - Mac: `Music/Ableton/User Library/Signal Hunter`
+   - Windows: usually `Documents\Ableton\User Library\Signal Hunter`
+   - Mac: usually `Music/Ableton/User Library/Signal Hunter`
+
+   Live may use a different folder: **Settings → Library → Location of User Library** shows the one it reads. Avoid a OneDrive-synced folder; it would sync thousands of small files.
 
    You can keep it anywhere else instead and add that folder to Live's browser with **Add Folder…** under Places. Either way, keep the folder together: the `.amxd` needs the files next to it.
 2. Drag `Signal Hunter.amxd` onto any audio track; audio passes through untouched. The panel shows **Ready** once its server is up.
